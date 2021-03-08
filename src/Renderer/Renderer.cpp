@@ -1,6 +1,7 @@
 #include "Renderer.hpp"
 
 #include <iostream>
+#include <numbers>
 
 #include <SDL2_gfxPrimitives.h>
 
@@ -24,15 +25,15 @@ bool Renderer::Init(
 	window.Load(window_name, window_x_, window_y_);
 	window.Bind();
 
-	if(auto error = glewInit(); error != GLEW_OK)
+	if (auto error = glewInit(); error != GLEW_OK)
 	{
-		std::cout << "GLEW failed to init: " << glewGetErrorString(error) << std::endl;
+		std::cout << "GLEW failed to init: " << glewGetErrorString(error)
+		          << std::endl;
 		return false;
 	}
 
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
-	ImGuiIO &io = ImGui::GetIO();
 
 	ImGui::StyleColorsDark();
 
@@ -42,26 +43,70 @@ bool Renderer::Init(
 	basic_shader.AddShaderFile("res/basic_shader.vert", GL_VERTEX_SHADER);
 	basic_shader.AddShaderFile("res/basic_shader.frag", GL_FRAGMENT_SHADER);
 
+	std::vector<glm::vec2> circle_pos;
+	constexpr size_t circle_vertecies = 2000;
+	circle_pos.reserve(circle_vertecies);
+	constexpr double delta_phi = std::numbers::pi * 2 / circle_vertecies;
+	for (size_t i = 0; i < circle_vertecies; i++)
+	{
+		circle_pos.emplace_back(
+		    glm::cos(delta_phi * i),
+		    glm::sin(delta_phi * i));
+	}
+	glCreateVertexArrays(1, &circle_vao);
+	glBindVertexArray(circle_vao);
+
+	glCreateBuffers(1, &circle_vbo);
+	glBindBuffer(GL_ARRAY_BUFFER, circle_vbo);
+
+	glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2)*circle_vertecies, circle_pos.data(), GL_STATIC_DRAW);
+
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
+
+	std::vector<glm::vec2> square_pos = {
+		{-0.5, -0.5},
+		{0.5, -0.5},
+		{0.5, 0.5},
+		{-0.5, 0.5}
+	};
+	glCreateVertexArrays(1, &square_vao);
+	glBindVertexArray(square_vao);
+
+	glCreateBuffers(1, &square_vbo);
+	glBindBuffer(GL_ARRAY_BUFFER, square_vbo);
+
+	glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2)*square_pos.size(), square_pos.data(), GL_STATIC_DRAW);
+
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
+
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
 	return true;
+}
+
+void Renderer::StartImGuiFrame()
+{
+	ImGui_ImplOpenGL3_NewFrame();
+	ImGui_ImplSDL2_NewFrame(window);
+	ImGui::NewFrame();
 }
 
 void Renderer::Draw(const SimManager &manager)
 {
-	SDL_SetRenderDrawBlendMode(renderer, SDL_BlendMode::SDL_BLENDMODE_BLEND);
-	SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-	SDL_RenderClear(renderer);
-	SDL_SetRenderDrawColor(renderer, 127, 127, 127, 255);
+	glClearColor(1.0, 1.0, 1.0, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT);
 	for (auto obstacle : manager.m_world.get_layout().at(1).obstacles)
 	{
-		SDL_FRect rect;
-		rect.x = obstacle.position.x * window_x;
-		rect.y = obstacle.position.y * window_y;
-		rect.w = obstacle.size.x * window_x;
-		rect.h = obstacle.size.y * window_y;
-		SDL_RenderFillRectF(renderer, &rect);
+		basic_shader.SetUniform("u_model", glm::translate(glm::rotate(glm::scale(glm::dmat3{1.0}, obstacle.size), obstacle.rotation), obstacle.position + obstacle.size/2.0));
+		glBindVertexArray(square_vao);
+		glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 	}
 
-	for (auto &person : manager.SimRunning ? manager.m_current_people : manager.m_simulation_start_people)
+	for (auto &person : manager.SimRunning ? manager.m_current_people
+	                                       : manager.m_simulation_start_people)
 	{
 		switch (person.state)
 		{
@@ -101,11 +146,16 @@ void Renderer::Draw(const SimManager &manager)
 			break;
 		}
 	}
+
+	ImGui::Render();
+	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 	SDL_RenderPresent(renderer);
 }
 
 void Renderer::Cleanup()
 {
-	SDL_DestroyRenderer(renderer);
-	SDL_DestroyWindow(window);
+	ImGui_ImplOpenGL3_Shutdown();
+	ImGui_ImplSDL2_Shutdown();
+	ImGui::DestroyContext();
+	window.Destroy();
 }

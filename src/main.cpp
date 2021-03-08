@@ -33,6 +33,8 @@ int main()
 	Renderer renderer;
 	renderer.Init(window_x, window_y, "Simulation");
 
+	ImGuiIO &io = ImGui::GetIO();
+
 	auto last_frame = std::chrono::steady_clock::now();
 
 	bool quit = false;
@@ -48,6 +50,7 @@ int main()
 		SDL_Event event;
 		while (SDL_PollEvent(&event))
 		{
+			ImGui_ImplSDL2_ProcessEvent(&event);
 			switch (event.type)
 			{
 			case SDL_QUIT:
@@ -61,7 +64,8 @@ int main()
 			manager.SimStep(time_per_step);
 			total_time -= time_per_step;
 		}
-		
+
+		renderer.StartImGuiFrame();
 		manager.DrawUI();
 		renderer.Draw(manager);
 	}
