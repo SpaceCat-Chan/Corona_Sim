@@ -1,6 +1,7 @@
 #pragma once
 
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <boost/archive/basic_text_iarchive.hpp>
@@ -21,7 +22,8 @@ struct Obstacle
 	double rotation = 0;
 	bool blocks_infection = true;
 	bool blocks_movement = true;
-	std::vector<glm::dvec2> get_vertecies(double expand_by, bool include_rotations=true) const;
+	std::vector<glm::dvec2>
+	get_vertecies(double expand_by, bool include_rotations = true) const;
 	bool intersects(glm::dvec2 from, glm::dvec2 to) const;
 
 	Obstacle() = default;
@@ -48,8 +50,8 @@ struct Floor
 	    glm::dvec2 pos_b,
 	    bool movement,
 	    bool infection) const;
-	PathResult calculate_path(glm::dvec2 from, glm::dvec2 to) const;
-	void recalc_visibility_graph() const;
+	const std::vector<std::pair<glm::dvec2, std::vector<size_t>>> &
+	recalc_visibility_graph() const;
 	void recalc() const { needs_recalc = true; }
 
 	private:
@@ -105,8 +107,9 @@ class World
 	void set_floor_group(int floor, std::string group);
 
 	private:
-	std::vector<int> floor_path(int from, int to);
-	std::vector<int> floor_path(int from, int to, std::vector<int> &already_seen);
+	std::optional<std::vector<int>> floor_path(int from, int to) const;
+	std::optional<std::vector<int>>
+	floor_path(int from, int to, std::unordered_set<int> &already_seen) const;
 
 	friend class boost::serialization::access;
 

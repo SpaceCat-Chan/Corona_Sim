@@ -4,13 +4,9 @@
 
 struct PathResult
 {
-	enum class up_or_down
-	{
-		up,
-		down
-	};
 	//a series of places that must be moved to in order
-	std::vector<std::variant<glm::dvec2, up_or_down>> waypoints;
+	std::vector<std::variant<glm::dvec2, std::pair<int, glm::dvec2>>> waypoints;
+	bool force_teleport = false;
 	PathResult() = default;
 	PathResult(const std::vector<glm::dvec2>& move_from)
 	{

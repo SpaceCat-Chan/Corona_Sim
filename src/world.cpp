@@ -22,7 +22,7 @@ void World::remove_obstacle(int floor, int obstacle)
 
 void World::remove_floor(int floor) { m_map.erase(floor); }
 
-void World::add_floor(int floor) {m_map.emplace(floor, Floor{}); }
+void World::add_floor(int floor) { m_map.emplace(floor, Floor{}); }
 
 const decltype(World::m_map) &World::get_layout() const { return m_map; }
 
@@ -110,12 +110,15 @@ bool LineLineIntersect(
 	return false;
 }
 
-std::vector<glm::dvec2> Obstacle::get_vertecies(double expand_by, bool include_rotations/*=true*/) const
+std::vector<glm::dvec2>
+Obstacle::get_vertecies(double expand_by, bool include_rotations /*=true*/) const
 {
 	auto center = (position * 2.0 + size) / 2.0;
 	auto rotate = glm::translate(
 	    glm::scale(
-	        glm::rotate(glm::translate(glm::dmat3{1}, center), include_rotations ? rotation : 0.0),
+	        glm::rotate(
+	            glm::translate(glm::dmat3{1}, center),
+	            include_rotations ? rotation : 0.0),
 	        glm::dvec2{
 	            ((center - position).x + expand_by) / (center - position).x,
 	            ((center - position).y + expand_by) / (center - position).y}),
@@ -188,11 +191,12 @@ bool Obstacle::intersects(glm::dvec2 from, glm::dvec2 to) const
 	           dont_care_2);
 }
 
-void Floor::recalc_visibility_graph() const
+const std::vector<std::pair<glm::dvec2, std::vector<size_t>>> &
+Floor::recalc_visibility_graph() const
 {
 	if (!needs_recalc)
 	{
-		return;
+		return visibility_graph;
 	}
 	visibility_graph.clear();
 	for (auto &obstacle : obstacles)
@@ -222,21 +226,7 @@ void Floor::recalc_visibility_graph() const
 		}
 	}
 	needs_recalc = false;
-}
-
-PathResult Floor::calculate_path(glm::dvec2 from, glm::dvec2 to) const
-{
-	recalc_visibility_graph();
-	AStar Pather{
-	    from,
-	    to,
-	    [this](glm::dvec2 from, glm::dvec2 to) {
-		    return test_line_of_sight(from, to, true, false);
-	    },
-	    visibility_graph};
-
-	Pather.run();
-	return {Pather.path_result()};
+	return visibility_graph;
 }
 
 PathResult World::calculate_path(
@@ -245,6 +235,74 @@ PathResult World::calculate_path(
     int to_floor,
     glm::dvec2 to) const
 {
+	auto floor_pathing = floor_path(from_floor, to_floor);
+	if (floor_pathing)
+	{
+		//true = entering a, false = entering b
+		std::vector<std::pair<std::vector<glm::dvec2>, int>> all_path_results;
+		std::vector<std::pair<FloorChanger, bool>> all_floor_changers;
+		for (size_t i = 0; i < floor_pathing->size() - 1; i++)
+		{
+			std::vector<glm::dvec2> to_next_floor;
+			std::vector<std::pair<FloorChanger, bool>> next_floor_changers;
+			for (auto &changer : floor_changers)
+			{
+				if (changer.a.first == floor_pathing->at(i)
+				    && changer.b.first == floor_pathing->at(i + 1))
+				{
+					to_next_floor.push_back(changer.a.second);
+					next_floor_changers.emplace_back(changer, true);
+				}
+				if (changer.b.first == floor_pathing->at(i)
+				    && changer.a.first == floor_pathing->at(i + 1))
+				{
+					to_next_floor.push_back(changer.b.second);
+					next_floor_changers.emplace_back(changer, false);
+				}
+			}
+			glm::dvec2 start;
+			if (i == 0)
+			{
+				start = from;
+			}
+			else
+			{
+				auto changer = all_floor_changers.back();
+				if (changer.second)
+				{
+					start = changer.first.b.second;
+				}
+				else
+				{
+					start = changer.first.a.second;
+				}
+			}
+			AStar Pather{
+			    start,
+			    to_next_floor,
+			    [this, &floor_pathing, &i](glm::dvec2 from, glm::dvec2 to) {
+				    return test_line_of_sight(
+				        floor_pathing->at(i),
+				        from,
+				        to,
+				        true,
+				        false);
+			    },
+			    m_map.at(floor_pathing->at(i)).recalc_visibility_graph()};
+			Pather.run();
+
+			auto results = Pather.path_result();
+			all_path_results.push_back(results);
+			all_floor_changers.push_back(next_floor_changers[results.second]);
+		}
+		
+	}
+	else
+	{
+		PathResult a;
+		a.force_teleport = true;
+		return a;
+	}
 	if (m_map.contains(from_floor))
 	{
 		return m_map.at(from_floor).calculate_path(from, to);
@@ -274,13 +332,49 @@ void World::set_floor_group(int floor, std::string group)
 	m_map.at(floor).group = group;
 }
 
-std::vector<int> World::floor_path(int from, int to)
+std::optional<std::vector<int>> World::floor_path(int from, int to) const
 {
-	std::vector<int> seen;
-	return floor_path(from, to, seen);
+	std::unordered_set<int> seen;
+	auto result = floor_path(from, to, seen);
+	if (result)
+	{
+		return {{result->rbegin(), result->rend()}};
+	}
+	return std::nullopt;
 }
 
-std::vector<int> World::floor_path(int from, int to, std::vector<int>& already_seen)
+std::optional<std::vector<int>>
+World::floor_path(int from, int to, std::unordered_set<int> &already_seen) const
 {
-	
+	if (from == to)
+	{
+		return {{to}};
+	}
+	already_seen.insert(from);
+	std::vector<int> options;
+	for (auto &changer : floor_changers)
+	{
+		if (changer.a.first == from)
+		{
+			options.push_back(changer.b.first);
+		}
+		if (changer.b.first == from)
+		{
+			options.push_back(changer.a.first);
+		}
+	}
+	for (auto option : options)
+	{
+		if (already_seen.contains(option) || !m_map.contains(option))
+		{
+			continue;
+		}
+		auto attempt = floor_path(option, to, already_seen);
+		if (attempt)
+		{
+			attempt->push_back(from);
+			return attempt;
+		}
+	}
+	return std::nullopt;
 }

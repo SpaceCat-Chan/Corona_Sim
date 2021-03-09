@@ -25,6 +25,7 @@ class AStar
 		auto start_index = m_visibility_map.size();
 		std::vector<size_t> end_index;
 		m_visibility_map.emplace_back(start, std::vector<size_t>{});
+		end_offset = m_visibility_map.size();
 		for (auto end : ends)
 		{
 			m_visibility_map.emplace_back(end, std::vector<size_t>{});
@@ -72,7 +73,7 @@ class AStar
 		return false;
 	}
 
-	std::vector<glm::dvec2> path_result()
+	std::pair<std::vector<glm::dvec2>, size_t> path_result()
 	{
 		std::vector<glm::dvec2> reverse_result;
 		decltype(m_closed_nodes)::iterator end_iter;
@@ -91,7 +92,7 @@ class AStar
 			reverse_result.push_back(end->position);
 			end = end->parent;
 		}
-		return {reverse_result.rbegin(), reverse_result.rend()};
+		return {{reverse_result.rbegin(), reverse_result.rend()}, end_iter->first - end_offset};
 	}
 
 	bool stop = false;
@@ -145,6 +146,7 @@ class AStar
 
 	std::vector<std::pair<glm::dvec2, std::vector<size_t>>> m_visibility_map;
 
+	size_t end_offset;
 	std::vector<glm::dvec2> m_end_locations;
 	std::vector<size_t> m_ends;
 };
