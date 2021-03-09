@@ -15,34 +15,39 @@ class AStar
 	public:
 	AStar(
 	    glm::dvec2 start,
-	    glm::dvec2 end,
+	    std::vector<glm::dvec2> ends,
 	    std::function<bool(glm::dvec2, glm::dvec2)> visibility,
 	    const std::vector<std::pair<glm::dvec2, std::vector<size_t>>>
 	        &visibility_map)
 	{
+		m_end_locations = ends;
 		m_visibility_map = visibility_map;
 		auto start_index = m_visibility_map.size();
-		auto end_index = m_visibility_map.size() + 1;
+		std::vector<size_t> end_index;
 		m_visibility_map.emplace_back(start, std::vector<size_t>{});
-		m_visibility_map.emplace_back(end, std::vector<size_t>{});
-
-		for (size_t i = 0; i < end_index; i++)
+		for (auto end : ends)
+		{
+			m_visibility_map.emplace_back(end, std::vector<size_t>{});
+			end_index.push_back(m_visibility_map.size() - 1);
+		}
+		for (size_t i = 0; i < end_index[0]; i++)
 		{
 			if (visibility(start, m_visibility_map[i].first) && i != start_index)
 			{
 				m_visibility_map[start_index].second.push_back(i);
 				m_visibility_map[i].second.push_back(start_index);
 			}
-			if (visibility(end, m_visibility_map[i].first))
-			{
-				m_visibility_map[end_index].second.push_back(i);
-				m_visibility_map[i].second.push_back(end_index);
-			}
+			for (size_t end = 0; end < ends.size(); end++)
+				if (visibility(ends[end], m_visibility_map[i].first))
+				{
+					m_visibility_map[end_index[end]].second.push_back(i);
+					m_visibility_map[i].second.push_back(end_index[end]);
+				}
 		}
 
-		m_end = end_index;
+		m_ends = end_index;
 		auto start_candidate
-		    = std::make_shared<PathingNode>(start, end, start_index);
+		    = std::make_shared<PathingNode>(start, ends, start_index);
 		m_f_open_nodes.insert({start_candidate->f, start_candidate});
 		m_pos_open_nodes.insert({start_index, start_candidate});
 	}
@@ -51,9 +56,12 @@ class AStar
 	{
 		while (!stop)
 		{
-			if (m_closed_nodes.find(m_end) != m_closed_nodes.end())
+			for (auto &end : m_ends)
 			{
-				return true;
+				if (m_closed_nodes.find(end) != m_closed_nodes.end())
+				{
+					return true;
+				}
 			}
 			if (m_f_open_nodes.empty())
 			{
@@ -67,7 +75,17 @@ class AStar
 	std::vector<glm::dvec2> path_result()
 	{
 		std::vector<glm::dvec2> reverse_result;
-		auto end = m_closed_nodes.find(m_end)->second.get();
+		decltype(m_closed_nodes)::iterator end_iter;
+		for (auto &end : m_ends)
+		{
+			auto attempt = m_closed_nodes.find(end);
+			if(attempt != m_closed_nodes.end())
+			{
+				end_iter = attempt;
+				break;
+			}
+		}
+		auto end = end_iter->second.get();
 		while (end != nullptr)
 		{
 			reverse_result.push_back(end->position);
@@ -100,6 +118,8 @@ class AStar
 				                             + candidate->second->g)
 				{
 					already->second->new_parent(candidate->second.get());
+					std::erase_if(m_f_open_nodes, [b = already->second](auto a){return a == b;});
+					m_f_open_nodes.insert({already->second->f, already->second});
 				}
 			}
 			else
@@ -107,7 +127,7 @@ class AStar
 				auto constructed_candidate = std::make_shared<PathingNode>(
 				    candidate->second.get(),
 				    m_visibility_map[new_candidate].first,
-				    m_visibility_map[m_end].first,
+					m_end_locations,
 				    new_candidate);
 				m_f_open_nodes.insert(
 				    {constructed_candidate->f, constructed_candidate});
@@ -125,5 +145,6 @@ class AStar
 
 	std::vector<std::pair<glm::dvec2, std::vector<size_t>>> m_visibility_map;
 
-	size_t m_end;
+	std::vector<glm::dvec2> m_end_locations;
+	std::vector<size_t> m_ends;
 };

@@ -108,10 +108,10 @@ bool Renderer::Init(
 
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), nullptr);
-	/*
+
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	*/
+
 	glDisable(GL_CULL_FACE);
 
 	return true;
@@ -124,7 +124,7 @@ void Renderer::StartImGuiFrame()
 	ImGui::NewFrame();
 }
 
-void Renderer::Draw(const SimManager &manager)
+void Renderer::Draw(const SimManager &manager, glm::dvec2 mouse)
 {
 	glm::dmat4 view_proj
 	    = glm::ortho(0.0, 1.0, 1.0, 0.0)
@@ -133,26 +133,70 @@ void Renderer::Draw(const SimManager &manager)
 	basic_shader.SetUniform("u_view_proj", view_proj);
 	glClearColor(1.0, 1.0, 1.0, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT);
-	for (auto obstacle : manager.m_world.get_layout().at(1).obstacles)
+	auto &map = manager.m_world.get_layout();
+	if (manager.viewing_floor_or_group.index() == 0)
 	{
-		basic_shader.SetUniform(
-		    "u_model",
-		    glm::rotate(
-		        glm::scale(
-		            glm::translate(
-		                glm::dmat4{1},
-		                glm::dvec3{obstacle.position + obstacle.size / 2.0, 0}),
-		            glm::dvec3{obstacle.size, 1}),
-		        obstacle.rotation,
-		        glm::dvec3{0, 0, 1}));
-		basic_shader.SetUniform("u_color", glm::dvec4{0.5, 0.5, 0.5, 1.0});
-		glBindVertexArray(square_vao);
-		glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+		auto floor = std::get<0>(manager.viewing_floor_or_group);
+		if (map.contains(floor))
+		{
+			for (size_t i = 0; i < map.at(floor).obstacles.size(); i++)
+			{
+				auto &obstacle = map.at(floor).obstacles[i];
+				draw_rectangle(
+				    obstacle.position,
+				    obstacle.size,
+				    obstacle.rotation,
+				    {0.5, 0.5, 0.5, 1.0});
+			}
+		}
+	}
+	else
+	{
+		for (auto &floor : map)
+		{
+			if (floor.second.group == ""
+			    || floor.second.group
+			           != std::get<1>(manager.viewing_floor_or_group))
+			{
+				continue;
+			}
+			for (auto obstacle : floor.second.obstacles)
+			{
+				draw_rectangle(
+				    obstacle.position,
+				    obstacle.size,
+				    obstacle.rotation,
+				    {0.5, 0.5, 0.5, 1.0});
+			}
+		}
 	}
 
 	for (auto &person : manager.SimRunning ? manager.m_current_people
 	                                       : manager.m_simulation_start_people)
 	{
+		if (manager.viewing_floor_or_group.index() == 0)
+		{
+			if (person.floor != std::get<0>(manager.viewing_floor_or_group))
+			{
+				continue;
+			}
+		}
+		else
+		{
+			if (map.contains(person.floor))
+			{
+				if (map.at(person.floor).group
+				        != std::get<1>(manager.viewing_floor_or_group)
+				    || map.at(person.floor).group == "")
+				{
+					continue;
+				}
+			}
+			else
+			{
+				continue;
+			}
+		}
 		switch (person.state)
 		{
 		case Person::susceptible:
@@ -165,6 +209,109 @@ void Renderer::Draw(const SimManager &manager)
 		case Person::recovered:
 			draw_sphere(person.position, 0.01, glm::dvec4{0.7, 0.7, 0.7, 1.0});
 			break;
+		}
+	}
+
+	for (auto &changer : manager.m_world.get_floor_changers())
+	{
+		glLineWidth(10);
+		if (manager.is_visable(changer.a.first))
+		{
+			draw_sphere(changer.a.second, 0.005, {0.2, 0, 0.7, 1});
+			draw_sphere(changer.a.second, 0.005, {0.1, 0, 0.6, 1}, true);
+		}
+		if (manager.is_visable(changer.b.first))
+		{
+			draw_sphere(changer.b.second, 0.005, {0.2, 0, 0.7, 1});
+			draw_sphere(changer.b.second, 0.005, {0.1, 0, 0.6, 1}, true);
+		}
+		glLineWidth(1);
+	}
+
+	if (manager.m_current_selection)
+	{
+		if (manager.m_current_selection->index() == 0)
+		{
+			auto &people = manager.SimRunning
+			                   ? manager.m_current_people
+			                   : manager.m_simulation_start_people;
+			auto &person = people[std::get<0>(*manager.m_current_selection)];
+			if (manager.is_visable(person.floor))
+			{
+				draw_rectangle(
+				    person.position - glm::dvec2{0.01},
+				    glm::dvec2{0.02},
+				    0,
+				    {1, 0, 0, 1},
+				    true);
+			}
+		}
+		else if (manager.m_current_selection->index() == 1)
+		{
+			auto obstacle_index = std::get<1>(*manager.m_current_selection);
+			if (manager.is_visable(obstacle_index.first))
+			{
+				auto &obstacle = manager.m_world.get_obstacle(
+				    obstacle_index.first,
+				    obstacle_index.second);
+				auto corner = obstacle.position - glm::dvec2{0.04};
+				auto size = obstacle.size + glm::dvec2{0.08};
+				draw_rectangle(
+				    corner,
+				    size,
+				    obstacle.rotation,
+				    {1, 0, 0, 1},
+				    true);
+			}
+		}
+		else
+		{
+			auto &changer = manager.m_world.get_floor_changers()[std::get<2>(
+			    *manager.m_current_selection)];
+			if (manager.is_visable(changer.a.first))
+			{
+				draw_rectangle(
+				    changer.a.second - glm::dvec2{0.01},
+				    glm::dvec2{0.02},
+				    0,
+				    manager.selected_a_or_b ? glm::dvec4{1, 0, 0, 1}
+				                            : glm::dvec4{0, 1, 0, 1},
+				    true);
+			}
+			if (manager.is_visable(changer.b.first))
+			{
+				draw_rectangle(
+				    changer.b.second - glm::dvec2{0.01},
+				    glm::dvec2{0.02},
+				    0,
+				    !manager.selected_a_or_b ? glm::dvec4{1, 0, 0, 1}
+				                             : glm::dvec4{0, 1, 0, 1},
+				    true);
+			}
+		}
+	}
+
+	if (manager.DragState == SimManager::CreateObstacle)
+	{
+		//this is complex
+	}
+	else
+	{
+		switch (manager.CreateNext)
+		{
+		case SimManager::Create::None:
+			break;
+		case SimManager::Create::Person:
+			draw_sphere(mouse, 0.01, {0.0, 1.0, 0.0, 0.5});
+			break;
+		case SimManager::Create::Obstacle:
+			draw_rectangle(mouse - glm::dvec2{0.02}, {0.04, 0.04}, 0, {0.5, 0.5, 0.5, 0.5});
+			break;
+		case SimManager::Create::Changer:
+			glLineWidth(10);
+			draw_sphere(mouse, 0.005, {0.2, 0, 0.7, 0.5});
+			draw_sphere(mouse, 0.005, {0.1, 0, 0.6, 0.5}, true);
+			glLineWidth(1);
 		}
 	}
 
@@ -181,7 +328,11 @@ void Renderer::Cleanup()
 	window.Destroy();
 }
 
-void Renderer::draw_sphere(glm::dvec2 point, double radius, glm::dvec4 color)
+void Renderer::draw_sphere(
+    glm::dvec2 point,
+    double radius,
+    glm::dvec4 color,
+    bool line)
 {
 	basic_shader.SetUniform(
 	    "u_model",
@@ -190,35 +341,65 @@ void Renderer::draw_sphere(glm::dvec2 point, double radius, glm::dvec4 color)
 	        glm::dvec3{radius, radius, 1}));
 	basic_shader.SetUniform("u_color", color);
 	glBindVertexArray(circle_vao);
-	glDrawArrays(GL_TRIANGLE_FAN, 0, 2000);
+	if (line)
+	{
+		glDrawArrays(GL_LINE_LOOP, 0, 2000);
+	}
+	else
+	{
+		glDrawArrays(GL_TRIANGLE_FAN, 0, 2000);
+	}
 }
 
-glm::dvec2 Renderer::ViewportToScreen(glm::dvec2 in, const SimManager& manager)
+void Renderer::draw_rectangle(
+    glm::dvec2 corner,
+    glm::dvec2 size,
+    double rotation,
+    glm::dvec4 color,
+    bool line)
 {
-	return WorldToScreen(ViewportToWorld(in, manager));
+	basic_shader.SetUniform(
+	    "u_model",
+	    glm::scale(
+	        glm::rotate(
+	            glm::translate(
+	                glm::dmat4{1},
+	                glm::dvec3{corner + size / 2.0, 0}),
+	            rotation,
+	            glm::dvec3{0, 0, 1}),
+	        glm::dvec3{size, 1}));
+	basic_shader.SetUniform("u_color", color);
+	glBindVertexArray(square_vao);
+	if (line)
+	{
+		glDrawArrays(GL_LINE_LOOP, 0, 4);
+	}
+	else
+	{
+		glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+	}
 }
 
-glm::dvec2 Renderer::ScreenToViewport(glm::dvec2 in, const SimManager& manager)
+glm::dvec2 Renderer::WorldToScreen(glm::dvec2 in, const SimManager &manager)
 {
-	return WorldToViewport(ScreenToWorld(in), manager);
+	return ViewportToScreen(WorldToViewport(in, manager));
 }
 
-glm::dvec2 Renderer::WorldToScreen(glm::dvec2 in)
+glm::dvec2 Renderer::ScreenToWorld(glm::dvec2 in, const SimManager &manager)
 {
-	return in * window_size;
+	return ViewportToWorld(ScreenToViewport(in), manager);
 }
 
-glm::dvec2 Renderer::ScreenToWorld(glm::dvec2 in)
+glm::dvec2 Renderer::ViewportToScreen(glm::dvec2 in) { return in * window_size; }
+
+glm::dvec2 Renderer::ScreenToViewport(glm::dvec2 in) { return in / window_size; }
+
+glm::dvec2 Renderer::WorldToViewport(glm::dvec2 in, const SimManager &manager)
 {
-	return in / window_size;
+	return in * manager.viewport.zw() + manager.viewport.xy();
 }
 
-glm::dvec2 Renderer::WorldToViewport(glm::dvec2 in, const SimManager& manager)
+glm::dvec2 Renderer::ViewportToWorld(glm::dvec2 in, const SimManager &manager)
 {
 	return (in - manager.viewport.xy()) / manager.viewport.zw();
-}
-
-glm::dvec2 Renderer::ViewportToWorld(glm::dvec2 in, const SimManager& manager)
-{
-	glm::dvec2 mouse_pos = in * manager.viewport.zw() + manager.viewport.xy();
 }

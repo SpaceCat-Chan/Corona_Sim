@@ -2,7 +2,7 @@ add_executable(CoronaSim main.cpp world.cpp SimManager/SimManager.cpp)
 
 target_sources(CoronaSim PRIVATE Renderer/Renderer.cpp Renderer/Shader.cpp Renderer/Window.cpp)
 
-target_sources(CoronaSim PRIVATE imgui/imgui_demo.cpp imgui/imgui_draw.cpp imgui/imgui.cpp imgui/imgui_tables.cpp imgui/imgui_widgets.cpp imgui/backends/imgui_impl_opengl3.cpp imgui/backends/imgui_impl_sdl.cpp)
+target_sources(CoronaSim PRIVATE imgui/imgui_demo.cpp imgui/imgui_draw.cpp imgui/imgui.cpp imgui/imgui_tables.cpp imgui/imgui_widgets.cpp imgui/backends/imgui_impl_opengl3.cpp imgui/backends/imgui_impl_sdl.cpp imgui/misc/cpp/imgui_stdlib.cpp)
 
 find_package(PkgConfig REQUIRED) 
 

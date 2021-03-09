@@ -24,18 +24,19 @@ class Renderer
 	GLuint square_vbo;
 	GLuint square_vao;
 
-	void draw_sphere(glm::dvec2 point, double radius, glm::dvec4 color);
+	void draw_sphere(glm::dvec2 point, double radius, glm::dvec4 color, bool line = false);
+	void draw_rectangle(glm::dvec2 corner, glm::dvec2 size, double rotation, glm::dvec4 color, bool line=false);
 
 	public:
 	bool Init(uint32_t window_x_, uint32_t window_y_, const char *window_name);
 	void StartImGuiFrame();
-	void Draw(const SimManager &manager);
+	void Draw(const SimManager &manager, glm::dvec2 mouse);
 	void Cleanup();
 
-	glm::dvec2 ScreenToWorld(glm::dvec2);
-	glm::dvec2 WorldToScreen(glm::dvec2);
-	glm::dvec2 ScreenToViewport(glm::dvec2, const SimManager&);
-	glm::dvec2 ViewportToScreen(glm::dvec2, const SimManager&);
+	glm::dvec2 ScreenToWorld(glm::dvec2, const SimManager&);
+	glm::dvec2 WorldToScreen(glm::dvec2, const SimManager&);
+	glm::dvec2 ScreenToViewport(glm::dvec2);
+	glm::dvec2 ViewportToScreen(glm::dvec2);
 	glm::dvec2 WorldToViewport(glm::dvec2, const SimManager&);
 	glm::dvec2 ViewportToWorld(glm::dvec2, const SimManager&);
 };

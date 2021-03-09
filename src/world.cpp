@@ -4,8 +4,11 @@
 
 void World::add_obstacle(int floor, Obstacle obstacle)
 {
-	m_map[floor].obstacles.push_back(obstacle);
-	m_map[floor].recalc();
+	if (m_map.contains(floor))
+	{
+		m_map.at(floor).obstacles.push_back(obstacle);
+		m_map.at(floor).recalc();
+	}
 }
 
 void World::remove_obstacle(int floor, int obstacle)
@@ -18,6 +21,8 @@ void World::remove_obstacle(int floor, int obstacle)
 }
 
 void World::remove_floor(int floor) { m_map.erase(floor); }
+
+void World::add_floor(int floor) {m_map.emplace(floor, Floor{}); }
 
 const decltype(World::m_map) &World::get_layout() const { return m_map; }
 
@@ -58,14 +63,7 @@ inline double Det(double a, double b, double c, double d)
 {
 	return a * d - b * c;
 }
-inline bool is_within(double val, double a, double b)
-{
-	if (a > b)
-	{
-		std::swap(a, b);
-	}
-	return a <= val && b >= val;
-}
+
 bool LineLineIntersect(
     double x1,
     double y1, //Line 1 start
@@ -112,12 +110,12 @@ bool LineLineIntersect(
 	return false;
 }
 
-std::vector<glm::dvec2> Obstacle::get_vertecies(double expand_by) const
+std::vector<glm::dvec2> Obstacle::get_vertecies(double expand_by, bool include_rotations/*=true*/) const
 {
 	auto center = (position * 2.0 + size) / 2.0;
 	auto rotate = glm::translate(
 	    glm::scale(
-	        glm::rotate(glm::translate(glm::dmat3{1}, center), rotation),
+	        glm::rotate(glm::translate(glm::dmat3{1}, center), include_rotations ? rotation : 0.0),
 	        glm::dvec2{
 	            ((center - position).x + expand_by) / (center - position).x,
 	            ((center - position).y + expand_by) / (center - position).y}),
@@ -138,7 +136,7 @@ bool point_inside_rect(glm::dvec2 point, Obstacle rect)
 
 bool Obstacle::intersects(glm::dvec2 from, glm::dvec2 to) const
 {
-	if(point_inside_rect(from, *this) || point_inside_rect(to, *this))
+	if (point_inside_rect(from, *this) || point_inside_rect(to, *this))
 	{
 		return true;
 	}
@@ -255,4 +253,34 @@ PathResult World::calculate_path(
 	{
 		return {};
 	}
+}
+
+Obstacle &World::get_obstacle(int floor, size_t index)
+{
+	return m_map.at(floor).obstacles.at(index);
+}
+
+const Obstacle &World::get_obstacle(int floor, size_t index) const
+{
+	return m_map.at(floor).obstacles.at(index);
+}
+
+void World::set_floor_name(int floor, std::string name)
+{
+	m_map.at(floor).name = name;
+}
+void World::set_floor_group(int floor, std::string group)
+{
+	m_map.at(floor).group = group;
+}
+
+std::vector<int> World::floor_path(int from, int to)
+{
+	std::vector<int> seen;
+	return floor_path(from, to, seen);
+}
+
+std::vector<int> World::floor_path(int from, int to, std::vector<int>& already_seen)
+{
+	
 }
