@@ -15,9 +15,9 @@
 class Renderer
 {
 	Window window;
-	uint32_t window_x, window_y;
+	glm::dvec2 window_size;
 
-	Shader basic_shader;
+	Shader basic_shader{Shader::DeferConstruction{}};
 
 	GLuint circle_vbo;
 	GLuint circle_vao;
@@ -31,4 +31,11 @@ class Renderer
 	void StartImGuiFrame();
 	void Draw(const SimManager &manager);
 	void Cleanup();
+
+	glm::dvec2 ScreenToWorld(glm::dvec2);
+	glm::dvec2 WorldToScreen(glm::dvec2);
+	glm::dvec2 ScreenToViewport(glm::dvec2, const SimManager&);
+	glm::dvec2 ViewportToScreen(glm::dvec2, const SimManager&);
+	glm::dvec2 WorldToViewport(glm::dvec2, const SimManager&);
+	glm::dvec2 ViewportToWorld(glm::dvec2, const SimManager&);
 };

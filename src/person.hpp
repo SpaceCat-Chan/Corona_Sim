@@ -16,6 +16,19 @@ class Person
 		recovered,
 	} state;
 
+	static const char* StateString(decltype(Person::state) state)
+	{
+		switch(state)
+		{
+			case susceptible:
+				return "susceptible";
+			case infected:
+				return "infected";
+			case recovered:
+				return "recovered";
+		}
+	}
+
 	//TODO: replace type with a different one that actually contains routine info
 	int Routine;
 

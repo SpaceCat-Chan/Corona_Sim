@@ -23,7 +23,6 @@ int main()
 		return timescale;
 	}};
 
-
 	if (SDL_Init(SDL_INIT_VIDEO) < 0)
 	{
 		std::cout << "unable to init SDL: " << SDL_GetError() << std::endl;
@@ -55,6 +54,15 @@ int main()
 			{
 			case SDL_QUIT:
 				quit = true;
+			case SDL_MOUSEWHEEL:
+				if(!io.WantCaptureMouse)
+				{
+					if(event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED)
+					{
+						event.wheel.y *= -1;
+					}
+					manager.Scroll(event.wheel.y, renderer.ScreenToWorld(io.MousePos));
+				}
 			}
 		}
 

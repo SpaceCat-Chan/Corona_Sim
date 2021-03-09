@@ -26,9 +26,15 @@ class Shader
 	std::vector<GLint> m_Shaders;
 	GLint m_ShaderProgram;
 	bool m_Linked = false;
+	bool m_Constructed = false;
+
+	void Construct();
 
 public:
+	class DeferConstruction {};
+
 	Shader();
+	Shader(DeferConstruction) {}
 	~Shader();
 
 	Shader(const Shader &Copy) = delete;

@@ -9,7 +9,8 @@
 #include "person.hpp"
 #include "world.hpp"
 
-class SimManager {
+class SimManager
+{
 
 	public:
 	SimManager(std::function<double(std::optional<double>)> timescale);
@@ -18,11 +19,12 @@ class SimManager {
 
 	void MoveStep(double dt);
 	void InfectStep(double dt);
-	
+
 	void StartDrag(glm::dvec2);
 	void UpdateDrag(glm::dvec2);
 	void StopDrag(glm::dvec2);
 	void Click(glm::dvec2);
+	void Scroll(double, glm::dvec2);
 
 	void LoadFromFile(std::string filename);
 	void SaveToFile(std::string filename);
@@ -30,6 +32,8 @@ class SimManager {
 	void DrawUI();
 
 	private:
+	void PersonUI(Person &);
+	void ObstacleUI(int, size_t);
 	World m_world;
 	std::vector<Person> m_current_people;
 	std::vector<Person> m_simulation_start_people;
@@ -37,6 +41,12 @@ class SimManager {
 	std::function<double(std::optional<double>)> m_timescale;
 	double sim_time = 0;
 	std::mt19937_64 rng{1337};
+	glm::dvec4 viewport{0, 0, 1, 1};
+
+	double mousewheel_sensitivity = 0.1;
+
+	std::optional<std::variant<size_t, std::pair<int, size_t>>>
+	    m_current_selection;
 
 	//chance of infection: 1/(1 + distance * inf_dist_mult) * infection_chance * dt
 	double minimum_infection_range = 0.05;

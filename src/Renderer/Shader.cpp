@@ -1,20 +1,29 @@
 #include "Shader.hpp"
 
-#include <memory>
 #include <fstream>
+#include <memory>
 
-Shader::Shader()
+Shader::Shader() { Construct(); }
+
+void Shader::Construct()
 {
-	m_ShaderProgram = glCreateProgram();
+	if (!m_Constructed)
+	{
+		m_ShaderProgram = glCreateProgram();
+		m_Constructed = true;
+	}
 }
 
 Shader::~Shader()
 {
-	for (size_t i = 0; i < m_Shaders.size(); i++)
+	if (m_Constructed)
 	{
-		glDeleteShader(m_Shaders[i]);
+		for (size_t i = 0; i < m_Shaders.size(); i++)
+		{
+			glDeleteShader(m_Shaders[i]);
+		}
+		glDeleteProgram(m_ShaderProgram);
 	}
-	glDeleteProgram(m_ShaderProgram);
 }
 
 Shader::Shader(Shader &&Move)
@@ -23,27 +32,31 @@ Shader::Shader(Shader &&Move)
 	m_ShaderProgram = std::move(Move.m_ShaderProgram);
 	Move.m_ShaderProgram = 0;
 	m_Linked = Move.m_Linked;
+	m_Constructed = Move.m_Constructed;
 }
 
 const Shader &Shader::operator=(Shader &&Move)
 {
 	m_Shaders = std::move(Move.m_Shaders);
 	m_ShaderProgram = std::move(Move.m_ShaderProgram);
+	Move.m_ShaderProgram = 0;
 	m_Linked = Move.m_Linked;
+	m_Constructed = Move.m_Constructed;
 
 	return *this;
 };
 
 void Shader::Link()
 {
+	Construct();
 	glLinkProgram(m_ShaderProgram);
 	GLint a;
 	glGetProgramiv(m_ShaderProgram, GL_LINK_STATUS, &a);
-	if(a == GL_FALSE)
+	if (a == GL_FALSE)
 	{
 		GLint log_length;
 		glGetProgramiv(m_ShaderProgram, GL_INFO_LOG_LENGTH, &log_length);
-		if(log_length != 0)
+		if (log_length != 0)
 		{
 			auto log = std::make_unique<char[]>(log_length);
 			glGetProgramInfoLog(m_ShaderProgram, log_length, nullptr, log.get());
@@ -55,6 +68,7 @@ void Shader::Link()
 
 void Shader::Bind()
 {
+	Construct();
 	if (!m_Linked)
 	{
 		Link();
@@ -64,6 +78,7 @@ void Shader::Bind()
 
 bool Shader::AddShader(std::string Source, GLenum type)
 {
+	Construct();
 	GLint NewShader = glCreateShader(type);
 	const GLchar *SourceC = Source.c_str();
 	GLint size = Source.size();
@@ -125,7 +140,12 @@ void Shader::SetUniform(std::string Name, GLfloat v0, GLfloat v1, GLfloat v2)
 	glUniform3f(Position, v0, v1, v2);
 }
 
-void Shader::SetUniform(std::string Name, GLfloat v0, GLfloat v1, GLfloat v2, GLfloat v3)
+void Shader::SetUniform(
+    std::string Name,
+    GLfloat v0,
+    GLfloat v1,
+    GLfloat v2,
+    GLfloat v3)
 {
 	Bind();
 	GLint Position = glGetUniformLocation(m_ShaderProgram, Name.c_str());
@@ -181,7 +201,12 @@ void Shader::SetUniform(std::string Name, GLuint v0, GLuint v1, GLuint v2)
 	glUniform3ui(Position, v0, v1, v2);
 }
 
-void Shader::SetUniform(std::string Name, GLuint v0, GLuint v1, GLuint v2, GLuint v3)
+void Shader::SetUniform(
+    std::string Name,
+    GLuint v0,
+    GLuint v1,
+    GLuint v2,
+    GLuint v3)
 {
 	Bind();
 	GLint Position = glGetUniformLocation(m_ShaderProgram, Name.c_str());
@@ -295,7 +320,10 @@ void Shader::SetUniform(std::string Name, std::vector<GLfloat> v0)
 	glUniform1fv(Position, v0.size(), v0.data());
 }
 
-void Shader::SetUniform(std::string Name, std::vector<std::conditional_t<!is_same_v<GLfloat, float>, float, double>> v0)
+void Shader::SetUniform(
+    std::string Name,
+    std::vector<std::conditional_t<!is_same_v<GLfloat, float>, float, double>>
+        v0)
 {
 	Bind();
 	GLint Position = glGetUniformLocation(m_ShaderProgram, Name.c_str());

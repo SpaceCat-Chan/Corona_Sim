@@ -1,5 +1,7 @@
 #include "SimManager.hpp"
 
+#include "imgui/imgui.h"
+
 SimManager::SimManager(std::function<double(std::optional<double>)> timescale)
 {
 	m_timescale = timescale;
@@ -19,9 +21,7 @@ SimManager::SimManager(std::function<double(std::optional<double>)> timescale)
 		m_simulation_start_people[i].going_to = 0;
 		m_simulation_start_people[i].floor = 0;
 	}
-
-	SimRunning = true;
-	m_current_people = m_simulation_start_people;
+	m_current_selection.emplace(std::in_place_type<size_t>, 0);
 }
 
 void SimManager::SimStep(double dt)
@@ -117,5 +117,181 @@ void SimManager::InfectStep(double dt)
 //where the rendering and the ui creation are seperated
 void SimManager::DrawUI()
 {
-	//no ui yet
+	ImGui::Begin("Simulation Controller");
+	if (ImGui::TreeNode("View Settings"))
+	{
+		float wheel_sens = mousewheel_sensitivity * 100;
+		ImGui::SliderFloat(
+		    "Mouse wheel sensitivity",
+		    &wheel_sens,
+		    1,
+		    100,
+		    "%.3f",
+		    ImGuiSliderFlags_Logarithmic);
+		mousewheel_sensitivity = wheel_sens / 100.0;
+		ImGui::TreePop();
+	}
+	if (SimRunning)
+	{
+		ImGui::Text("Simulation is running");
+	}
+	else
+	{
+		ImGui::Text("Simulation is not running");
+	}
+	if (ImGui::Button("(Re)Start Simulation"))
+	{
+		SimRunning = true;
+		m_current_people = m_simulation_start_people;
+	}
+	if (ImGui::Button("Stop Simulation"))
+	{
+		SimRunning = false;
+	}
+	ImGui::End();
+
+	if (m_current_selection)
+	{
+		bool open = true;
+		ImGui::Begin("Selection", &open);
+		switch (m_current_selection->index())
+		{
+		case 0: {
+			auto &person_index = std::get<0>(*m_current_selection);
+			auto &person = SimRunning ? m_current_people[person_index]
+			                          : m_simulation_start_people[person_index];
+			PersonUI(person);
+			break;
+		}
+		}
+		ImGui::End();
+		if (!open)
+		{
+			m_current_selection = std::nullopt;
+		}
+	}
 }
+
+void SimManager::PersonUI(Person &person)
+{
+	if (SimRunning)
+	{
+		ImGui::Text("State: %s", Person::StateString(person.state));
+	}
+	else
+	{
+		if (ImGui::BeginCombo("State", Person::StateString(person.state)))
+		{
+			if (ImGui::Selectable("susceptible"))
+			{
+				person.state = Person::susceptible;
+			}
+			if (ImGui::Selectable("infected"))
+			{
+				person.state = Person::infected;
+			}
+			if (ImGui::Selectable("recovered"))
+			{
+				person.state = Person::recovered;
+			}
+			ImGui::EndCombo();
+		}
+	}
+	if (person.state == Person::infected)
+	{
+		double orig_seconds = person.infection_finish_time - sim_time;
+		int seconds = orig_seconds;
+		int minutes = seconds / 60;
+		int hours = minutes / 60;
+		int days = hours / 24;
+		hours %= 24;
+		minutes %= 60;
+		seconds %= 60;
+		float shown_seconds = orig_seconds - std::floor(orig_seconds) + seconds;
+		if (SimRunning)
+		{
+			ImGui::Text(
+			    "time until infection wears off: %i days %i hours %i minutes %f seconds",
+			    days,
+			    hours,
+			    minutes,
+			    shown_seconds);
+		}
+		else
+		{
+			int day_temp = days;
+			if (ImGui::InputInt(
+			        "Days",
+			        &day_temp,
+			        0,
+			        0,
+			        ImGuiInputTextFlags_EnterReturnsTrue))
+			{
+				days = day_temp;
+			}
+			int hour_temp = hours;
+			if (ImGui::InputInt(
+			        "Hours",
+			        &hour_temp,
+			        0,
+			        0,
+			        ImGuiInputTextFlags_EnterReturnsTrue))
+			{
+				hours = hour_temp;
+			}
+			int  minute_temp = minutes;
+			if (ImGui::InputInt(
+			        "Minutes",
+			        &minute_temp,
+			        0,
+			        0,
+			        ImGuiInputTextFlags_EnterReturnsTrue))
+			{
+				minutes = minute_temp;
+			}
+			float temp = shown_seconds;
+			if (ImGui::InputFloat(
+			        "Seconds",
+			        &temp,
+			        0,
+			        0,
+			        "%.3f",
+			        ImGuiInputTextFlags_EnterReturnsTrue))
+			{
+				shown_seconds = temp;
+			}
+			person.infection_finish_time
+			    = sim_time
+			      + (((days * 24 + hours) * 60 + minutes) * 60 + shown_seconds);
+		}
+	}
+	ImGui::Text("Current Floor: %i", person.floor);
+}
+
+void SimManager::Scroll(double amount, glm::dvec2 orig_mouse)
+{
+	auto direction = glm::sign(amount);
+	amount = 1 + (glm::abs(amount) * mousewheel_sensitivity);
+	glm::dvec2 scale_change = viewport.zw();
+	glm::dvec2 mouse_pos = (orig_mouse - viewport.xy()) / viewport.zw();
+	if (direction == 1)
+	{
+		viewport.z *= amount;
+		viewport.w *= amount;
+	}
+	else if (direction == -1)
+	{
+		viewport.z /= amount;
+		viewport.w /= amount;
+	}
+	scale_change -= viewport.zw();
+	viewport.x += scale_change.x * mouse_pos.x;
+	viewport.y += scale_change.y * mouse_pos.y;
+}
+
+void SimManager::Click(glm::dvec2)
+{
+	//not yet...
+}
+
+void SimManager::StartDrag(glm::dvec2) {}
