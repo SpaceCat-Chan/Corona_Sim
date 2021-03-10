@@ -294,6 +294,14 @@ void Renderer::Draw(const SimManager &manager, glm::dvec2 mouse)
 	if (manager.DragState == SimManager::CreateObstacle)
 	{
 		//this is complex
+		//the above comment is fucking wrong, dumbass
+
+		glm::dvec2 min, max;
+		min.x = glm::min(manager.last_drag.x, mouse.x);
+		min.y = glm::min(manager.last_drag.y, mouse.y);
+		max.x = glm::max(manager.last_drag.x, mouse.x);
+		max.y = glm::max(manager.last_drag.y, mouse.y);
+		draw_rectangle(min, max - min, 0, {0.5, 0.5, 0.5, 0.5});
 	}
 	else
 	{

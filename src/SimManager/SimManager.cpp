@@ -3,9 +3,11 @@
 #include <glm/gtx/string_cast.hpp>
 #include <iostream>
 #include <sstream>
+#include <fstream>
 
 #include "imgui/imgui.h"
 #include "imgui/misc/cpp/imgui_stdlib.h"
+#include "glm_serialize.hpp"
 
 SimManager::SimManager(std::function<double(std::optional<double>)> timescale)
 {
@@ -43,17 +45,31 @@ void SimManager::MoveStep(double dt)
 		if (person.going_to >= person.going_along.waypoints.size())
 		{
 			//temporary routine, just for testing
-			if (person.Routine)
+			if (person.routine.actions.size() == 0)
+			{
+				continue;
+			}
+			if (person.routine_step >= person.routine.actions.size())
+			{
+				person.routine_step = 0;
+			}
+			auto current_action = person.routine.actions[person.routine_step];
+			auto current_time = sim_time;
+			int rounded_time = current_time;
+			current_time -= rounded_time;
+			rounded_time %= person.routine.repeat_interval;
+			current_time += rounded_time;
+			if (current_time > current_action.when)
 			{
 				person.going_along = m_world.calculate_path(
 				    person.floor,
 				    person.position,
-				    person.Routine->first,
-				    person.Routine->second);
+				    current_action.where.first,
+				    current_action.where.second);
 				person.going_to = 0;
-				person.Routine = std::nullopt;
+				person.routine_step++;
 			}
-			return;
+			continue;
 		}
 
 		if (person.going_along.force_teleport)
@@ -193,6 +209,7 @@ void SimManager::DrawUI(glm::dvec2 mouse_location)
 		SimRunning = false;
 	}
 
+
 	if (viewing_floor_or_group.index() == 0)
 	{
 		if (ImGui::Button("Create Person"))
@@ -268,6 +285,17 @@ void SimManager::DrawUI(glm::dvec2 mouse_location)
 		}
 		ImGui::TreePop();
 	}
+	static std::string filename;
+	ImGui::InputText("Filename", &filename);
+	if(ImGui::Button("Save"))
+	{
+		SaveToFile(filename);
+	}
+	ImGui::SameLine();
+	if(ImGui::Button("Load"))
+	{
+		LoadFromFile(filename);
+	}
 	ImGui::Text(
 	    "mouse location: %.3f, %.3f",
 	    mouse_location.x,
@@ -329,22 +357,46 @@ void SimManager::PersonUI(Person &person)
 			ImGui::EndCombo();
 		}
 	}
-	if (person.Routine)
+	if (ImGui::TreeNode("Routine"))
 	{
-		ImGui::Text("Going to go to %i {%f, %f}", person.Routine->first, person.Routine->second.x, person.Routine->second.y);
-	}
-	static int floor;
-	static glm::vec2 pos;
-	ImGui::InputInt("Target Floor", &floor);
-	ImGui::InputFloat2("Target Location", glm::value_ptr(pos));
-	if(ImGui::Button("Submit"))
-	{
-		person.Routine = {floor, glm::dvec2{pos}};
-	}
-	ImGui::SameLine();
-	if(ImGui::Button("Delete"))
-	{
-		person.Routine = std::nullopt;
+		std::optional<size_t> to_delete;
+		for (size_t i = 0; i < person.routine.actions.size(); i++)
+		{
+			ImGui::PushID(i);
+			std::stringstream ss;
+			ss << "Action " << i << "###ActionNode";
+			if (ImGui::TreeNode(ss.str().c_str()))
+			{
+				double minutes = person.routine.actions[i].when / 60;
+				ImGui::InputDouble("When", &minutes, 0, 0, "%.3f minutes");
+				person.routine.actions[i].when = minutes * 60;
+				ImGui::InputInt("Floor", &person.routine.actions[i].where.first);
+				glm::vec2 where = person.routine.actions[i].where.second;
+				ImGui::InputFloat2("Where", glm::value_ptr(where));
+				person.routine.actions[i].where.second = where;
+
+				if (ImGui::Button("delete"))
+				{
+					to_delete = i;
+				}
+				ImGui::TreePop();
+			}
+
+			ImGui::PopID();
+		}
+		if (to_delete)
+		{
+			person.routine.actions.erase(
+			    person.routine.actions.begin() + *to_delete);
+		}
+		if (ImGui::Button("add"))
+		{
+			person.routine.actions.emplace_back();
+		}
+		double minutes = person.routine.repeat_interval / 60;
+		ImGui::InputDouble("Repeat every", &minutes, 0, 0, "%.6f minutes");
+		person.routine.repeat_interval = minutes * 60;
+		ImGui::TreePop();
 	}
 	if (person.state == Person::infected)
 	{
@@ -606,6 +658,12 @@ void SimManager::StartDrag(glm::dvec2 where)
 	std::cout << glm::to_string(where) << '\n';
 	last_drag = where;
 
+	if(CreateNext == Create::Obstacle && viewing_floor_or_group.index() == 0)
+	{
+		DragState = CreateObstacle;
+		return;
+	}
+
 	if (m_current_selection)
 	{
 		if (m_current_selection->index() == 0)
@@ -757,8 +815,10 @@ void SimManager::UpdateDrag(glm::dvec2 where)
 			changer.b.second -= last_drag - where;
 		}
 	}
+	case CreateObstacle:
+		break;
 	}
-	if (DragState != Screen)
+	if (DragState != Screen && DragState != CreateObstacle)
 	{
 		last_drag = where;
 	}
@@ -771,5 +831,30 @@ void SimManager::StopDrag(glm::dvec2 where)
 		return;
 	}
 	UpdateDrag(where);
+	if(DragState == CreateObstacle)
+	{
+		glm::dvec2 min, max;
+		min.x = glm::min(last_drag.x, where.x);
+		min.y = glm::min(last_drag.y, where.y);
+		max.x = glm::max(last_drag.x, where.x);
+		max.y = glm::max(last_drag.y, where.y);
+		m_world.add_obstacle(std::get<0>(viewing_floor_or_group), {min, max - min, 0});
+	}
 	DragState = None;
+}
+
+void SimManager::LoadFromFile(std::string filename)
+{
+	std::ifstream file{filename};
+	boost::archive::text_iarchive ar{file};
+	ar >> m_world;
+	ar >> m_simulation_start_people;
+}
+
+void SimManager::SaveToFile(std::string filename)
+{
+	std::ofstream file{filename};
+	boost::archive::text_oarchive ar{file};
+	ar << m_world;
+	ar << m_simulation_start_people;
 }

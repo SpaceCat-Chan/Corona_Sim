@@ -4,8 +4,8 @@
 #include <unordered_set>
 #include <vector>
 
-#include <boost/archive/basic_text_iarchive.hpp>
-#include <boost/archive/basic_text_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
+#include <boost/archive/text_oarchive.hpp>
 #include <boost/serialization/access.hpp>
 #include <boost/serialization/unordered_map.hpp>
 #include <boost/serialization/vector.hpp>
@@ -33,6 +33,18 @@ struct Obstacle
 		size = size_;
 		rotation = rotation_;
 	}
+
+	private:
+	friend class boost::serialization::access;
+	template <typename Archive>
+	void serialize(Archive & ar, unsigned int)
+	{
+		ar &position;
+		ar &size;
+		ar &rotation;
+		ar &blocks_infection;
+		ar &blocks_movement;
+	}
 };
 
 struct FloorChanger
@@ -58,6 +70,20 @@ struct Floor
 	mutable bool needs_recalc = false;
 	mutable std::vector<std::pair<glm::dvec2, std::vector<size_t>>>
 	    visibility_graph;
+
+	friend class boost::serialization::access;
+	template <typename Archive>
+	void serialize(Archive & ar, unsigned int)
+	{
+		ar &name;
+		ar &group;
+		ar &obstacles;
+		ar &needs_recalc;
+		if(!needs_recalc)
+		{
+			ar &visibility_graph;
+		}
+	}
 };
 
 class World
@@ -114,10 +140,9 @@ class World
 	friend class boost::serialization::access;
 
 	template <typename Archive>
-	void serialize(Archive ar, unsigned int version)
+	void serialize(Archive &ar, unsigned int)
 	{
 		ar &m_map;
-		glm::abs(version);
 	}
 };
 

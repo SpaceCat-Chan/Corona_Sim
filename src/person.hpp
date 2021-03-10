@@ -2,10 +2,40 @@
 
 #include <chrono>
 
+#include <boost/serialization/access.hpp>
 #include <glm/ext.hpp>
 
 #include "PathResult.hpp"
 
+struct Action
+{
+	double when;
+	std::pair<int, glm::dvec2> where;
+
+	private:
+	friend class boost::serialization::access;
+	template <typename Archive>
+	void serialize(Archive &ar, unsigned int)
+	{
+		ar &when;
+		ar &where;
+	}
+};
+
+struct Routine
+{
+	int repeat_interval;
+	std::vector<Action> actions;
+
+	private:
+	friend class boost::serialization::access;
+	template <typename Archive>
+	void serialize(Archive &ar, unsigned int)
+	{
+		ar &repeat_interval;
+		ar &actions;
+	}
+};
 class Person
 {
 	public:
@@ -16,21 +46,21 @@ class Person
 		recovered,
 	} state;
 
-	static const char* StateString(decltype(Person::state) state)
+	static const char *StateString(decltype(Person::state) state)
 	{
-		switch(state)
+		switch (state)
 		{
-			case susceptible:
-				return "susceptible";
-			case infected:
-				return "infected";
-			case recovered:
-				return "recovered";
+		case susceptible:
+			return "susceptible";
+		case infected:
+			return "infected";
+		case recovered:
+			return "recovered";
 		}
 	}
 
-	//TODO: replace type with a different one that actually contains routine info
-	std::optional<std::pair<int, glm::dvec2>> Routine;
+	Routine routine;
+	size_t routine_step = 0;
 
 	double infection_finish_time;
 
@@ -39,4 +69,15 @@ class Person
 	size_t going_to;
 	PathResult going_along;
 	std::optional<double> switching_floor_time;
+
+	private:
+	friend class boost::serialization::access;
+	template <typename Archive>
+	void serialize(Archive &ar, unsigned int)
+	{
+		ar &position;
+		ar &floor;
+		ar &routine;
+		ar &state;
+	}
 };
