@@ -9,25 +9,34 @@ struct PathingNode
 	size_t index;
 	double g = 0, h = 0, f = 0;
 
-	PathingNode(PathingNode *_parent, glm::dvec2 new_position, std::vector<glm::dvec2> end_positions, size_t index_)
+	PathingNode(
+	    PathingNode *_parent,
+	    glm::dvec2 new_position,
+	    std::vector<glm::dvec2> end_positions,
+	    size_t index_)
 	{
+		update_distance(new_position, end_positions);
 		new_parent(_parent);
-		update_distance(new_position, end_positions);
 		index = index_;
 	}
-	PathingNode(glm::dvec2 new_position, std::vector<glm::dvec2> end_positions, size_t index_)
+	PathingNode(
+	    glm::dvec2 new_position,
+	    std::vector<glm::dvec2> end_positions,
+	    size_t index_)
 	{
 		update_distance(new_position, end_positions);
 		index = index_;
 	}
-	void update_distance(glm::dvec2 new_position, std::vector<glm::dvec2> end_positions)
+	void update_distance(
+	    glm::dvec2 new_position,
+	    std::vector<glm::dvec2> end_positions)
 	{
 		position = new_position;
-		double min = std::numeric_limits<double>::max();
-		for(auto &end : end_positions)
+		double min = 1e100;
+		for (auto &end : end_positions)
 		{
 			auto dist = glm::distance(new_position, end);
-			if(dist < min)
+			if (dist < min)
 			{
 				min = dist;
 			}
@@ -37,8 +46,19 @@ struct PathingNode
 	}
 	void new_parent(PathingNode *_parent)
 	{
-		parent = _parent;
-		g = glm::distance(parent->position, position);
-		f = g + h;
+			parent = _parent;
+			g = glm::distance(parent->position, position) + parent->g;
+			f = g + h;
+	}
+	bool attempt_new_parent(PathingNode *_parent)
+	{
+		if ((glm::distance(_parent->position, position) + _parent->g) < g)
+		{
+			parent = _parent;
+			g = glm::distance(parent->position, position) + parent->g;
+			f = g + h;
+			return true;
+		}
+		return false;
 	}
 };

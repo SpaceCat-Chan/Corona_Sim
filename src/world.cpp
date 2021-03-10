@@ -241,24 +241,31 @@ PathResult World::calculate_path(
 		//true = entering a, false = entering b
 		std::vector<std::pair<std::vector<glm::dvec2>, int>> all_path_results;
 		std::vector<std::pair<FloorChanger, bool>> all_floor_changers;
-		for (size_t i = 0; i < floor_pathing->size() - 1; i++)
+		for (size_t i = 0; i < floor_pathing->size(); i++)
 		{
 			std::vector<glm::dvec2> to_next_floor;
 			std::vector<std::pair<FloorChanger, bool>> next_floor_changers;
-			for (auto &changer : floor_changers)
+			if (i != floor_pathing->size() - 1)
 			{
-				if (changer.a.first == floor_pathing->at(i)
-				    && changer.b.first == floor_pathing->at(i + 1))
+				for (auto &changer : floor_changers)
 				{
-					to_next_floor.push_back(changer.a.second);
-					next_floor_changers.emplace_back(changer, true);
+					if (changer.a.first == floor_pathing->at(i)
+					    && changer.b.first == floor_pathing->at(i + 1))
+					{
+						to_next_floor.push_back(changer.a.second);
+						next_floor_changers.emplace_back(changer, true);
+					}
+					if (changer.b.first == floor_pathing->at(i)
+					    && changer.a.first == floor_pathing->at(i + 1))
+					{
+						to_next_floor.push_back(changer.b.second);
+						next_floor_changers.emplace_back(changer, false);
+					}
 				}
-				if (changer.b.first == floor_pathing->at(i)
-				    && changer.a.first == floor_pathing->at(i + 1))
-				{
-					to_next_floor.push_back(changer.b.second);
-					next_floor_changers.emplace_back(changer, false);
-				}
+			}
+			else
+			{
+				to_next_floor.push_back(to);
 			}
 			glm::dvec2 start;
 			if (i == 0)
@@ -292,24 +299,50 @@ PathResult World::calculate_path(
 			Pather.run();
 
 			auto results = Pather.path_result();
-			all_path_results.push_back(results);
-			all_floor_changers.push_back(next_floor_changers[results.second]);
+			if (results)
+			{
+				all_path_results.push_back(*results);
+				if (i != floor_pathing->size() - 1)
+				{
+					all_floor_changers.push_back(
+					    next_floor_changers[results->second]);
+				}
+			}
+			else
+			{
+				PathResult a;
+				a.force_teleport = true;
+				a.waypoints.emplace_back(std::pair{to_floor, to});
+				return a;
+			}
 		}
-		
+		PathResult result;
+		for (size_t i = 0; i < all_path_results.size(); i++)
+		{
+			for (auto &waypoint : all_path_results[i].first)
+			{
+				result.waypoints.emplace_back(waypoint);
+			}
+			if (i != floor_pathing->size() - 1)
+			{
+				if (all_floor_changers[i].second)
+				{
+					result.waypoints.emplace_back(all_floor_changers[i].first.b);
+				}
+				else
+				{
+					result.waypoints.emplace_back(all_floor_changers[i].first.a);
+				}
+			}
+		}
+		return result;
 	}
 	else
 	{
 		PathResult a;
 		a.force_teleport = true;
+		a.waypoints.emplace_back(std::pair{to_floor, to});
 		return a;
-	}
-	if (m_map.contains(from_floor))
-	{
-		return m_map.at(from_floor).calculate_path(from, to);
-	}
-	else
-	{
-		return {};
 	}
 }
 

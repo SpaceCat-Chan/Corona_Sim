@@ -73,18 +73,22 @@ class AStar
 		return false;
 	}
 
-	std::pair<std::vector<glm::dvec2>, size_t> path_result()
+	std::optional<std::pair<std::vector<glm::dvec2>, size_t>> path_result()
 	{
 		std::vector<glm::dvec2> reverse_result;
 		decltype(m_closed_nodes)::iterator end_iter;
 		for (auto &end : m_ends)
 		{
 			auto attempt = m_closed_nodes.find(end);
-			if(attempt != m_closed_nodes.end())
+			if (attempt != m_closed_nodes.end())
 			{
 				end_iter = attempt;
 				break;
 			}
+		}
+		if (end_iter == m_closed_nodes.end())
+		{
+			return std::nullopt;
 		}
 		auto end = end_iter->second.get();
 		while (end != nullptr)
@@ -92,7 +96,11 @@ class AStar
 			reverse_result.push_back(end->position);
 			end = end->parent;
 		}
-		return {{reverse_result.rbegin(), reverse_result.rend()}, end_iter->first - end_offset};
+		return std::pair{
+		    std::vector<glm::dvec2>{
+		        reverse_result.rbegin(),
+		        reverse_result.rend()},
+		    end_iter->first - end_offset};
 	}
 
 	bool stop = false;
@@ -113,13 +121,11 @@ class AStar
 			if (auto already = m_pos_open_nodes.find(new_candidate);
 			    already != m_pos_open_nodes.end())
 			{
-				if (already->second->g > glm::distance(
-				                             candidate->second->position,
-				                             already->second->position)
-				                             + candidate->second->g)
+				if (already->second->attempt_new_parent(candidate->second.get()))
 				{
-					already->second->new_parent(candidate->second.get());
-					std::erase_if(m_f_open_nodes, [b = already->second](auto a){return a == b;});
+					std::erase_if(m_f_open_nodes, [b = already->second](auto a) {
+						return a.second == b;
+					});
 					m_f_open_nodes.insert({already->second->f, already->second});
 				}
 			}
@@ -128,7 +134,7 @@ class AStar
 				auto constructed_candidate = std::make_shared<PathingNode>(
 				    candidate->second.get(),
 				    m_visibility_map[new_candidate].first,
-					m_end_locations,
+				    m_end_locations,
 				    new_candidate);
 				m_f_open_nodes.insert(
 				    {constructed_candidate->f, constructed_candidate});

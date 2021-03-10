@@ -19,12 +19,6 @@ SimManager::SimManager(std::function<double(std::optional<double>)> timescale)
 		m_simulation_start_people.emplace_back();
 		m_simulation_start_people[i].state = Person::susceptible;
 		m_simulation_start_people[i].position = {0.5, 0.3};
-		m_simulation_start_people[i].going_along = m_world.calculate_path(
-		    1,
-		    m_simulation_start_people[i].position,
-		    1,
-		    {0.5, 0.7});
-		m_simulation_start_people[i].going_to = 0;
 		m_simulation_start_people[i].floor = 1;
 	}
 	m_current_selection.emplace(
@@ -46,24 +40,65 @@ void SimManager::MoveStep(double dt)
 {
 	for (auto &person : m_current_people)
 	{
-		if (person.going_to == person.going_along.waypoints.size())
+		if (person.going_to >= person.going_along.waypoints.size())
 		{
-			continue;
+			//temporary routine, just for testing
+			if (person.Routine)
+			{
+				person.going_along = m_world.calculate_path(
+				    person.floor,
+				    person.position,
+				    person.Routine->first,
+				    person.Routine->second);
+				person.going_to = 0;
+				person.Routine = std::nullopt;
+			}
+			return;
 		}
 
-		auto move_direction
-		    = std::get<0>(person.going_along.waypoints[person.going_to])
-		      - person.position;
-		if (glm::length(glm::normalize(move_direction) * dt * 0.05)
-		    < glm::length(move_direction))
+		if (person.going_along.force_teleport)
 		{
-			person.position += glm::normalize(move_direction) * dt * 0.05;
+			auto final = std::get<1>(person.going_along.waypoints.back());
+			person.floor = final.first;
+			person.position = final.second;
+			person.going_to = person.going_along.waypoints.size();
+		}
+
+		auto &current_waypoint = person.going_along.waypoints[person.going_to];
+		if (current_waypoint.index() == 0)
+		{
+			auto move_direction
+			    = std::get<0>(person.going_along.waypoints[person.going_to])
+			      - person.position;
+			if (glm::length(glm::normalize(move_direction) * dt * 0.05)
+			    < glm::length(move_direction))
+			{
+				person.position += glm::normalize(move_direction) * dt * 0.05;
+			}
+			else
+			{
+				person.position
+				    = std::get<0>(person.going_along.waypoints[person.going_to]);
+				person.going_to++;
+			}
 		}
 		else
 		{
-			person.position
-			    = std::get<0>(person.going_along.waypoints[person.going_to]);
-			person.going_to++;
+			if (person.switching_floor_time)
+			{
+				if (sim_time > person.switching_floor_time)
+				{
+					auto telepot_to = std::get<1>(current_waypoint);
+					person.floor = telepot_to.first;
+					person.position = telepot_to.second;
+					person.going_to++;
+					person.switching_floor_time = std::nullopt;
+				}
+			}
+			else
+			{
+				person.switching_floor_time = sim_time + 2;
+			}
 		}
 	}
 }
@@ -151,6 +186,7 @@ void SimManager::DrawUI(glm::dvec2 mouse_location)
 	{
 		SimRunning = true;
 		m_current_people = m_simulation_start_people;
+		sim_time = 0;
 	}
 	if (ImGui::Button("Stop Simulation"))
 	{
@@ -232,7 +268,10 @@ void SimManager::DrawUI(glm::dvec2 mouse_location)
 		}
 		ImGui::TreePop();
 	}
-	ImGui::Text("mouse location: %.3f, %.3f", mouse_location.x, mouse_location.y);
+	ImGui::Text(
+	    "mouse location: %.3f, %.3f",
+	    mouse_location.x,
+	    mouse_location.y);
 	ImGui::End();
 
 	if (m_current_selection)
@@ -289,6 +328,23 @@ void SimManager::PersonUI(Person &person)
 			}
 			ImGui::EndCombo();
 		}
+	}
+	if (person.Routine)
+	{
+		ImGui::Text("Going to go to %i {%f, %f}", person.Routine->first, person.Routine->second.x, person.Routine->second.y);
+	}
+	static int floor;
+	static glm::vec2 pos;
+	ImGui::InputInt("Target Floor", &floor);
+	ImGui::InputFloat2("Target Location", glm::value_ptr(pos));
+	if(ImGui::Button("Submit"))
+	{
+		person.Routine = {floor, glm::dvec2{pos}};
+	}
+	ImGui::SameLine();
+	if(ImGui::Button("Delete"))
+	{
+		person.Routine = std::nullopt;
 	}
 	if (person.state == Person::infected)
 	{

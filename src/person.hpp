@@ -30,7 +30,7 @@ class Person
 	}
 
 	//TODO: replace type with a different one that actually contains routine info
-	int Routine;
+	std::optional<std::pair<int, glm::dvec2>> Routine;
 
 	double infection_finish_time;
 
@@ -38,4 +38,5 @@ class Person
 	int floor;
 	size_t going_to;
 	PathResult going_along;
+	std::optional<double> switching_floor_time;
 };

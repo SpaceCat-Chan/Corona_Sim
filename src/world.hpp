@@ -123,9 +123,10 @@ class World
 
 inline bool is_within(double val, double a, double b)
 {
+	constexpr double EPSILON = 0.00001;
 	if (a > b)
 	{
 		std::swap(a, b);
 	}
-	return a <= val && b >= val;
+	return a - val <= EPSILON && b - val >= -EPSILON;
 }
