@@ -25,6 +25,8 @@ struct Obstacle
 	std::vector<glm::dvec2>
 	get_vertecies(double expand_by, bool include_rotations = true) const;
 	bool intersects(glm::dvec2 from, glm::dvec2 to) const;
+	bool intersects(glm::dvec2 point) const;
+	bool intersects(const Obstacle &other) const;
 
 	Obstacle() = default;
 	Obstacle(glm::dvec2 position_, glm::dvec2 size_, double rotation_)

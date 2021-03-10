@@ -130,16 +130,63 @@ Obstacle::get_vertecies(double expand_by, bool include_rotations /*=true*/) cons
 	    glm::dvec2{rotate * glm::dvec3{position + glm::dvec2{0, size.y}, 1}}};
 }
 
-bool point_inside_rect(glm::dvec2 point, Obstacle rect)
+bool simple_point_AABB(glm::dvec2 point, const Obstacle &ob)
 {
-	auto result = glm::greaterThanEqual(point, rect.position)
-	              && glm::lessThanEqual(point, rect.position + rect.size);
+	auto result = glm::greaterThanEqual(point, ob.position)
+	              && glm::lessThanEqual(point, ob.position + ob.size);
 	return result.x && result.y;
+}
+
+bool Obstacle::intersects(glm::dvec2 point) const
+{
+
+	auto center = position + size / 2.0;
+	auto rotate = glm::translate(glm::dmat4{1}, glm::dvec3{center, 0})
+	              * glm::rotate(glm::dmat4{1}, -rotation, glm::dvec3{0, 0, 1})
+	              * glm::translate(glm::dmat4{1}, -glm::dvec3{center, 0});
+	return simple_point_AABB(rotate * glm::dvec4{point, 0, 1}, *this);
+}
+
+bool Obstacle::intersects(const Obstacle &other) const
+{
+	auto my_center = position + size / 2.0;
+	auto my_rotate = glm::translate(glm::dmat4{1}, glm::dvec3{my_center, 0})
+	                 * glm::rotate(glm::dmat4{1}, -rotation, glm::dvec3{0, 0, 1})
+	                 * glm::translate(glm::dmat4{1}, -glm::dvec3{my_center, 0});
+
+	auto other_points = other.get_vertecies(0);
+	for (auto &point : other_points)
+	{
+		if (simple_point_AABB(my_rotate * glm::dvec4{point, 0, 1}, *this))
+		{
+			return true;
+		}
+	}
+
+	auto other_center = other.position + other.size / 2.0;
+	auto other_rotate
+	    = glm::translate(glm::dmat4{1}, glm::dvec3{other_center, 0})
+	      * glm::rotate(glm::dmat4{1}, -other.rotation, glm::dvec3{0, 0, 1})
+	      * glm::translate(glm::dmat4{1}, -glm::dvec3{other_center, 0});
+
+	auto my_points = get_vertecies(0);
+	for (auto &point : my_points)
+	{
+		if (simple_point_AABB(other_rotate * glm::dvec4{point, 0, 1}, other))
+		{
+			return true;
+		}
+	}
+
+	return other.intersects(my_points[0], my_points[1])
+	       || other.intersects(my_points[1], my_points[2])
+	       || other.intersects(my_points[2], my_points[3])
+	       || other.intersects(my_points[3], my_points[0]);
 }
 
 bool Obstacle::intersects(glm::dvec2 from, glm::dvec2 to) const
 {
-	if (point_inside_rect(from, *this) || point_inside_rect(to, *this))
+	if (intersects(from) || intersects(to))
 	{
 		return true;
 	}

@@ -23,9 +23,6 @@ SimManager::SimManager(std::function<double(std::optional<double>)> timescale)
 		m_simulation_start_people[i].position = {0.5, 0.3};
 		m_simulation_start_people[i].floor = 1;
 	}
-	m_current_selection.emplace(
-	    std::in_place_index<1>,
-	    std::pair<int, size_t>{1, 0});
 }
 
 void SimManager::SimStep(double dt)
@@ -136,7 +133,14 @@ void SimManager::InfectStep(double dt)
 		{
 			auto &second_person = m_current_people[second_person_iter];
 			if (first_person_iter == second_person_iter
-			    || second_person.state != Person::susceptible)
+			    || second_person.state != Person::susceptible
+			    || first_person.floor != second_person.floor
+			    || !m_world.test_line_of_sight(
+			        first_person.floor,
+			        first_person.position,
+			        second_person.position,
+			        false,
+			        true))
 			{
 				continue;
 			}
@@ -203,6 +207,13 @@ void SimManager::DrawUI(glm::dvec2 mouse_location)
 		SimRunning = true;
 		m_current_people = m_simulation_start_people;
 		sim_time = 0;
+		if (m_selection_box)
+		{
+			if (m_selection_box->size() != 1)
+			{
+				m_selection_box = std::nullopt;
+			}
+		}
 	}
 	if (ImGui::Button("Stop Simulation"))
 	{
@@ -255,11 +266,13 @@ void SimManager::DrawUI(glm::dvec2 mouse_location)
 				if (ImGui::Button("View Floor"))
 				{
 					viewing_floor_or_group = floor.first;
+					m_selection_box = std::nullopt;
 				}
 				ImGui::SameLine();
 				if (ImGui::Button("View Group"))
 				{
 					viewing_floor_or_group = floor.second.group;
+					m_selection_box = std::nullopt;
 				}
 
 				static std::string name;
@@ -301,37 +314,42 @@ void SimManager::DrawUI(glm::dvec2 mouse_location)
 	    mouse_location.y);
 	ImGui::End();
 
-	if (m_current_selection)
+	if (m_selection_box)
 	{
-		bool open = true;
-		ImGui::Begin("Selection", &open);
-		switch (m_current_selection->index())
+		if (m_selection_box->size() == 1)
 		{
-		case 0: {
-			auto &person_index = std::get<0>(*m_current_selection);
-			auto &person = SimRunning ? m_current_people[person_index]
-			                          : m_simulation_start_people[person_index];
-			auto to_delete = PersonUI(person);
-			if(to_delete)
+			bool open = true;
+			ImGui::Begin("Selection", &open);
+			switch (m_selection_box->at(0).index())
 			{
-				open = false;
-				m_simulation_start_people.erase(m_simulation_start_people.begin() + person_index);
+			case 0: {
+				auto &person_index = std::get<0>(m_selection_box->at(0));
+				auto &person = SimRunning
+				                   ? m_current_people[person_index]
+				                   : m_simulation_start_people[person_index];
+				auto to_delete = PersonUI(person);
+				if (to_delete)
+				{
+					open = false;
+					m_simulation_start_people.erase(
+					    m_simulation_start_people.begin() + person_index);
+				}
 			}
-		}
-		break;
-		case 1: {
-			auto pair = std::get<1>(*m_current_selection);
-			ObstacleUI(pair.first, pair.second, open);
-		}
-		break;
-		case 2:
-			ChangerUI(std::get<2>(*m_current_selection), open);
 			break;
-		}
-		ImGui::End();
-		if (!open)
-		{
-			m_current_selection = std::nullopt;
+			case 1: {
+				auto pair = std::get<1>(m_selection_box->at(0));
+				ObstacleUI(pair.first, pair.second, open);
+			}
+			break;
+			case 2:
+				ChangerUI(std::get<2>(m_selection_box->at(0)).first, open);
+				break;
+			}
+			ImGui::End();
+			if (!open)
+			{
+				m_selection_box = std::nullopt;
+			}
 		}
 	}
 }
@@ -609,8 +627,10 @@ void SimManager::Click(glm::dvec2 click, bool ctrl)
 		{
 			if (glm::distance(click, people[i].position) < 0.01)
 			{
-				m_current_selection = decltype(
-				    m_current_selection)::value_type{std::in_place_index<0>, i};
+				m_selection_box = std::vector{
+				    decltype(m_selection_box)::value_type::value_type{
+				        std::in_place_index<0>,
+				        i}};
 				return;
 			}
 		}
@@ -640,7 +660,9 @@ void SimManager::Click(glm::dvec2 click, bool ctrl)
 				        vertecies[0].y,
 				        vertecies[2].y))
 				{
-					m_current_selection = std::pair(floor.first, i);
+					m_selection_box = std::vector{
+					    decltype(m_selection_box)::value_type::value_type{
+					        std::pair(floor.first, i)}};
 					return;
 				}
 			}
@@ -654,9 +676,10 @@ void SimManager::Click(glm::dvec2 click, bool ctrl)
 		{
 			if (glm::distance(changer.a.second, click) < 0.005)
 			{
-				selected_a_or_b = true;
-				m_current_selection = decltype(
-				    m_current_selection)::value_type{std::in_place_index<2>, i};
+				m_selection_box = std::vector{
+				    decltype(m_selection_box)::value_type::value_type{
+				        std::in_place_index<2>,
+				        std::pair{i, true}}};
 				return;
 			}
 		}
@@ -664,20 +687,20 @@ void SimManager::Click(glm::dvec2 click, bool ctrl)
 		{
 			if (glm::distance(changer.b.second, click) < 0.01)
 			{
-				selected_a_or_b = false;
-				m_current_selection = decltype(
-				    m_current_selection)::value_type{std::in_place_index<2>, i};
+				m_selection_box = std::vector{
+				    decltype(m_selection_box)::value_type::value_type{
+				        std::in_place_index<2>,
+				        std::pair{i, false}}};
 				return;
 			}
 		}
 	}
 
-	m_current_selection = std::nullopt;
+	m_selection_box = std::nullopt;
 }
 
-void SimManager::StartDrag(glm::dvec2 where)
+void SimManager::StartDrag(glm::dvec2 where, bool ctrl)
 {
-	std::cout << glm::to_string(where) << '\n';
 	last_drag = where;
 
 	if (CreateNext == Create::Obstacle && viewing_floor_or_group.index() == 0)
@@ -686,100 +709,123 @@ void SimManager::StartDrag(glm::dvec2 where)
 		return;
 	}
 
-	if (m_current_selection)
+	if (m_selection_box)
 	{
-		if (m_current_selection->index() == 0)
+		if (ctrl)
 		{
-			auto &people
-			    = SimRunning ? m_current_people : m_simulation_start_people;
-			if (glm::distance(
-			        where,
-			        people[std::get<0>(*m_current_selection)].position)
-			    < 0.01)
+			DragState = DragSelection;
+			return;
+		}
+		if (m_selection_box->size() == 1)
+		{
+			if (m_selection_box->at(0).index() == 1)
 			{
-				DragState = DragPerson;
-				return;
+				auto obstacle_index = std::get<1>(m_selection_box->at(0));
+				if (m_world.get_layout().contains(obstacle_index.first))
+				{
+					auto &obstacle = m_world.get_obstacle(
+					    obstacle_index.first,
+					    obstacle_index.second);
+					auto center = obstacle.position + obstacle.size / 2.0;
+					auto inverse_rotation
+					    = glm::translate(glm::dmat4{1}, glm::dvec3{center, 0})
+					      * glm::rotate(
+					          glm::dmat4{1},
+					          -obstacle.rotation,
+					          glm::dvec3{0, 0, 1})
+					      * glm::translate(
+					          glm::dmat4{1},
+					          -glm::dvec3{center, 0});
+					glm::dvec2 rotated_click
+					    = inverse_rotation * glm::dvec4{where, 0, 1};
+					auto main_vertecies = obstacle.get_vertecies(0.04, false);
+					for (size_t i = 0; i < main_vertecies.size(); i += 2)
+					{
+						auto next = i + 1;
+						if (next == main_vertecies.size())
+						{
+							next = 0;
+						}
+						auto insert_point = (main_vertecies.begin() + i) + 1;
+						main_vertecies.insert(
+						    insert_point,
+						    glm::mix(
+						        main_vertecies[i],
+						        main_vertecies[next],
+						        0.5));
+					}
+					for (size_t i = 0; i < main_vertecies.size(); i++)
+					{
+						auto vertex = main_vertecies[i];
+						if (is_within(
+						        rotated_click.x,
+						        vertex.x - 0.005,
+						        vertex.x + 0.005)
+						    && is_within(
+						        rotated_click.y,
+						        vertex.y - 0.005,
+						        vertex.y + 0.005))
+						{
+							DragState = ScaleObstacle;
+							std::array<int, 2> or_together;
+							if ((i & 1) != 1)
+							{
+								int down = i - 1, up = i + 1;
+								if (down == -1)
+								{
+									down = 7;
+								}
+								or_together[0] = down;
+								or_together[1] = up;
+							}
+							else
+							{
+								or_together[0] = i;
+								or_together[1] = i;
+							}
+							for (auto todo : or_together)
+							{
+								if (todo == 1)
+								{
+									ScaleCorner_Top = 1;
+								}
+								if (todo == 3)
+								{
+									ScaleCorner_Right = 1;
+								}
+								if (todo == 5)
+								{
+									ScaleCorner_Bottom = 1;
+								}
+								if (todo == 7)
+								{
+									ScaleCorner_Left = 1;
+								}
+							}
+							return;
+						}
+					}
+					main_vertecies = obstacle.get_vertecies(0.08, false);
+					if (is_within(
+					        rotated_click.x,
+					        main_vertecies[0].x,
+					        main_vertecies[2].x)
+					    && is_within(
+					        rotated_click.y,
+					        main_vertecies[0].y,
+					        main_vertecies[2].y))
+					{
+						DragState = RotatingObstacle;
+						return;
+					}
+				}
 			}
 		}
-		else if (m_current_selection->index() == 1)
-		{
-			auto obstacle_index = std::get<1>(*m_current_selection);
-			if (m_world.get_layout().contains(obstacle_index.first))
-			{
-				auto &obstacle = m_world.get_obstacle(
-				    obstacle_index.first,
-				    obstacle_index.second);
-				auto center = obstacle.position + obstacle.size / 2.0;
-				auto inverse_rotation
-				    = glm::translate(glm::dmat4{1}, glm::dvec3{center, 0})
-				      * glm::rotate(
-				          glm::dmat4{1},
-				          -obstacle.rotation,
-				          glm::dvec3{0, 0, 1})
-				      * glm::translate(glm::dmat4{1}, -glm::dvec3{center, 0});
-				glm::dvec2 rotated_click
-				    = inverse_rotation * glm::dvec4{where, 0, 1};
-				auto main_vertecies = obstacle.get_vertecies(0, false);
-				for (auto &a : main_vertecies)
-				{
-					std::cout << glm::to_string(a) << " ";
-				}
-				std::cout << "\n";
-				if (is_within(
-				        rotated_click.x,
-				        main_vertecies[0].x,
-				        main_vertecies[2].x)
-				    && is_within(
-				        rotated_click.y,
-				        main_vertecies[0].y,
-				        main_vertecies[2].y))
-				{
-					DragState = MovingObstacle;
-					return;
-				}
-				main_vertecies = obstacle.get_vertecies(0.08, false);
-				for (auto &a : main_vertecies)
-				{
-					std::cout << glm::to_string(a) << " ";
-				}
-				std::cout << "\n";
-				if (is_within(
-				        rotated_click.x,
-				        main_vertecies[0].x,
-				        main_vertecies[2].x)
-				    && is_within(
-				        rotated_click.y,
-				        main_vertecies[0].y,
-				        main_vertecies[2].y))
-				{
-					DragState = RotatingObstacle;
-					return;
-				}
-			}
-		}
-		else
-		{
-			glm::dvec2 position;
-			if (selected_a_or_b)
-			{
-				position
-				    = m_world
-				          .get_floor_changer(std::get<2>(*m_current_selection))
-				          .a.second;
-			}
-			else
-			{
-				position
-				    = m_world
-				          .get_floor_changer(std::get<2>(*m_current_selection))
-				          .b.second;
-			}
-			if (glm::distance(where, position) < 0.01)
-			{
-				DragState = DragFloorChanger;
-				return;
-			}
-		}
+	}
+	if (ctrl && viewing_floor_or_group.index() == 0 && !SimRunning)
+	{
+		DragState = Select;
+		return;
 	}
 
 	//default
@@ -788,8 +834,7 @@ void SimManager::StartDrag(glm::dvec2 where)
 
 void SimManager::UpdateDrag(glm::dvec2 where)
 {
-	std::cout << glm::to_string(where) << '\n';
-	if (SimRunning)
+	if (SimRunning && DragState != Screen)
 	{
 		return;
 	}
@@ -801,21 +846,41 @@ void SimManager::UpdateDrag(glm::dvec2 where)
 		viewport.x -= last_drag.x - where.x;
 		viewport.y -= last_drag.y - where.y;
 		break;
-	case DragPerson: {
-		auto &person
-		    = m_simulation_start_people[std::get<0>(*m_current_selection)];
-		person.position -= last_drag - where;
-	}
-	break;
-	case MovingObstacle: {
-		auto obstacle_index = std::get<1>(*m_current_selection);
-		auto &obstacle
-		    = m_world.get_obstacle(obstacle_index.first, obstacle_index.second);
-		obstacle.position -= last_drag - where;
+	case DragSelection: {
+		for (auto &thing : *m_selection_box)
+		{
+			if (thing.index() == 0)
+			{
+				auto &person = m_simulation_start_people[std::get<0>(thing)];
+				person.position -= last_drag - where;
+			}
+			else if (thing.index() == 1)
+			{
+				auto obstacle_index = std::get<1>(thing);
+				auto &obstacle = m_world.get_obstacle(
+				    obstacle_index.first,
+				    obstacle_index.second);
+				obstacle.position -= last_drag - where;
+			}
+			else
+			{
+				auto &changer
+				    = m_world.get_floor_changer(std::get<2>(thing).first);
+				auto selected_a_or_b = std::get<2>(thing).second;
+				if (selected_a_or_b)
+				{
+					changer.a.second -= last_drag - where;
+				}
+				else
+				{
+					changer.b.second -= last_drag - where;
+				}
+			}
+		}
 	}
 	break;
 	case RotatingObstacle: {
-		auto obstacle_index = std::get<1>(*m_current_selection);
+		auto obstacle_index = std::get<1>(m_selection_box->at(0));
 		auto &obstacle
 		    = m_world.get_obstacle(obstacle_index.first, obstacle_index.second);
 		auto center = obstacle.position + obstacle.size / 2.0;
@@ -825,22 +890,64 @@ void SimManager::UpdateDrag(glm::dvec2 where)
 		                     - std::atan2(where_rel.y, where_rel.x);
 	}
 	break;
-	case DragFloorChanger: {
-		auto &changer
-		    = m_world.get_floor_changer(std::get<2>(*m_current_selection));
-		if (selected_a_or_b)
-		{
-			changer.a.second -= last_drag - where;
-		}
-		else
-		{
-			changer.b.second -= last_drag - where;
-		}
-	}
 	case CreateObstacle:
 		break;
+	case Select:
+		break;
+	case ScaleObstacle: {
+		auto obstacle_index = std::get<1>(m_selection_box->at(0));
+		if (!m_world.get_layout().contains(obstacle_index.first))
+		{
+			break;
+		}
+		auto &obstacle
+		    = m_world.get_obstacle(obstacle_index.first, obstacle_index.second);
+		auto center = obstacle.position + obstacle.size / 2.0;
+		auto inverse_rotation
+		    = glm::translate(glm::dmat4{1}, glm::dvec3{center, 0})
+		      * glm::rotate(
+		          glm::dmat4{1},
+		          -obstacle.rotation,
+		          glm::dvec3{0, 0, 1})
+		      * glm::translate(glm::dmat4{1}, -glm::dvec3{center, 0});
+		glm::dvec2 diff = (inverse_rotation * glm::dvec4{where, 0, 1})
+		                  - (inverse_rotation * glm::dvec4{last_drag, 0, 1});
+
+		if (ScaleCorner_Left)
+		{
+			if ((obstacle.size.x - diff.x) >= 0.01)
+			{
+				obstacle.position.x += diff.x;
+				obstacle.size.x -= diff.x;
+			}
+		}
+		if (ScaleCorner_Right)
+		{
+			if ((obstacle.size.x + diff.x) >= 0.01)
+			{
+				obstacle.size.x += diff.x;
+			}
+		}
+		if (ScaleCorner_Top)
+		{
+			if ((obstacle.size.y - diff.y) >= 0.01)
+			{
+				obstacle.position.y += diff.y;
+				obstacle.size.y -= diff.y;
+			}
+		}
+		if (ScaleCorner_Bottom)
+		{
+			if ((obstacle.size.y + diff.y) >= 0.01)
+			{
+				obstacle.size.y += diff.y;
+			}
+		}
 	}
-	if (DragState != Screen && DragState != CreateObstacle)
+	break;
+	}
+	if (DragState != Screen && DragState != CreateObstacle
+	    && DragState != Select)
 	{
 		last_drag = where;
 	}
@@ -864,7 +971,76 @@ void SimManager::StopDrag(glm::dvec2 where)
 		    std::get<0>(viewing_floor_or_group),
 		    {min, max - min, 0});
 	}
+	else if (DragState == Select)
+	{
+		auto floor = std::get<0>(viewing_floor_or_group);
+		if (m_world.get_layout().contains(floor))
+		{
+			glm::dvec2 min, max;
+			min.x = glm::min(last_drag.x, where.x);
+			min.y = glm::min(last_drag.y, where.y);
+			max.x = glm::max(last_drag.x, where.x);
+			max.y = glm::max(last_drag.y, where.y);
+			Obstacle selection{min, max - min, 0};
+			m_selection_box.emplace();
+			for (size_t i = 0; i < m_simulation_start_people.size(); i++)
+			{
+				auto &person = m_simulation_start_people[i];
+				if (person.floor == floor)
+				{
+					if (selection.intersects(person.position))
+					{
+						m_selection_box->emplace_back(std::in_place_index<0>, i);
+					}
+				}
+			}
+			for (size_t i = 0; i < m_world.get_floor_changers().size(); i++)
+			{
+				auto &changer = m_world.get_floor_changer(i);
+				bool added = false;
+				if (changer.a.first == floor)
+				{
+					if (selection.intersects(changer.a.second))
+					{
+						m_selection_box->emplace_back(
+						    std::in_place_index<2>,
+						    std::pair{i, true});
+						added = true;
+					}
+				}
+				if (changer.b.first == floor && !added)
+				{
+					if (selection.intersects(changer.b.second))
+					{
+						m_selection_box->emplace_back(
+						    std::in_place_index<2>,
+						    std::pair{i, false});
+					}
+				}
+			}
+			for (size_t i = 0;
+			     i < m_world.get_layout().at(floor).obstacles.size();
+			     ++i)
+			{
+				auto &obstacle = m_world.get_layout().at(floor).obstacles.at(i);
+				if (selection.intersects(obstacle))
+				{
+					m_selection_box->emplace_back(
+					    std::in_place_index<1>,
+					    std::pair{floor, i});
+				}
+			}
+			if (m_selection_box->size() == 0)
+			{
+				m_selection_box = std::nullopt;
+			}
+		}
+	}
 	DragState = None;
+	ScaleCorner_Top = 0;
+	ScaleCorner_Right = 0;
+	ScaleCorner_Bottom = 0;
+	ScaleCorner_Left = 0;
 }
 
 void SimManager::LoadFromFile(std::string filename)
@@ -881,4 +1057,53 @@ void SimManager::SaveToFile(std::string filename)
 	boost::archive::text_oarchive ar{file};
 	ar << m_world;
 	ar << m_simulation_start_people;
+}
+
+void SimManager::KeyClick(SDL_Scancode key, bool)
+{
+	switch (key)
+	{
+	case SDL_SCANCODE_Q:
+		m_selection_box = std::nullopt;
+		CreateNext = Create::None;
+		if (DragState == CreateObstacle)
+		{
+			DragState = None;
+		}
+		break;
+
+	case SDL_SCANCODE_DELETE:
+		if (!SimRunning)
+		{
+			if (m_selection_box)
+			{
+				for (auto iter = m_selection_box->rbegin(); iter != m_selection_box->rend(); iter++)
+				{
+					auto &thing = *iter;
+					if (thing.index() == 0)
+					{
+						m_simulation_start_people.erase(
+						    m_simulation_start_people.begin()
+						    + std::get<0>(thing));
+					}
+					else if (thing.index() == 1)
+					{
+						auto index = std::get<1>(thing);
+						m_world.remove_obstacle(index.first, index.second);
+					}
+					else
+					{
+						auto index = std::get<2>(thing);
+						m_world.remove_floor_changer(index.first);
+					}
+				}
+				m_selection_box = std::nullopt;
+			}
+		}
+		break;
+	
+
+	default:
+		break;
+	}
 }

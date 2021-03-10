@@ -228,65 +228,96 @@ void Renderer::Draw(const SimManager &manager, glm::dvec2 mouse)
 		glLineWidth(1);
 	}
 
-	if (manager.m_current_selection)
+	if (manager.m_selection_box)
 	{
-		if (manager.m_current_selection->index() == 0)
+		for (auto &selected : *manager.m_selection_box)
 		{
-			auto &people = manager.SimRunning
-			                   ? manager.m_current_people
-			                   : manager.m_simulation_start_people;
-			auto &person = people[std::get<0>(*manager.m_current_selection)];
-			if (manager.is_visable(person.floor))
+			if (selected.index() == 0)
 			{
-				draw_rectangle(
-				    person.position - glm::dvec2{0.01},
-				    glm::dvec2{0.02},
-				    0,
-				    {1, 0, 0, 1},
-				    true);
+				auto &people = manager.SimRunning
+				                   ? manager.m_current_people
+				                   : manager.m_simulation_start_people;
+				auto &person = people[std::get<0>(selected)];
+				if (manager.is_visable(person.floor))
+				{
+					draw_rectangle(
+					    person.position - glm::dvec2{0.01},
+					    glm::dvec2{0.02},
+					    0,
+					    {1, 0, 0, 1},
+					    true);
+				}
 			}
-		}
-		else if (manager.m_current_selection->index() == 1)
-		{
-			auto obstacle_index = std::get<1>(*manager.m_current_selection);
-			if (manager.is_visable(obstacle_index.first))
+			else if (selected.index() == 1)
 			{
-				auto &obstacle = manager.m_world.get_obstacle(
-				    obstacle_index.first,
-				    obstacle_index.second);
-				auto corner = obstacle.position - glm::dvec2{0.04};
-				auto size = obstacle.size + glm::dvec2{0.08};
-				draw_rectangle(
-				    corner,
-				    size,
-				    obstacle.rotation,
-				    {1, 0, 0, 1},
-				    true);
+				auto obstacle_index = std::get<1>(selected);
+				if (manager.is_visable(obstacle_index.first))
+				{
+					auto &obstacle = manager.m_world.get_obstacle(
+					    obstacle_index.first,
+					    obstacle_index.second);
+					auto corner = obstacle.position - glm::dvec2{0.04};
+					auto size = obstacle.size + glm::dvec2{0.08};
+					draw_rectangle(
+					    corner,
+					    size,
+					    obstacle.rotation,
+					    {1, 0, 0, 1},
+					    true);
+					if (manager.m_selection_box->size() == 1)
+					{
+						auto main_vertecies = obstacle.get_vertecies(0.04);
+						for (size_t i = 0; i < main_vertecies.size(); i += 2)
+						{
+							auto next = i + 1;
+							if (next == main_vertecies.size())
+							{
+								next = 0;
+							}
+							auto insert_point = (main_vertecies.begin() + i) + 1;
+							main_vertecies.insert(
+							    insert_point,
+							    glm::mix(
+							        main_vertecies[i],
+							        main_vertecies[next],
+							        0.5));
+						}
+						for (auto &vertex : main_vertecies)
+						{
+							draw_rectangle(
+							    vertex - glm::dvec2{0.005},
+							    {0.01, 0.01},
+							    obstacle.rotation,
+							    {0.65, 0.65, 0.65, 1});
+						}
+					}
+				}
 			}
-		}
-		else
-		{
-			auto &changer = manager.m_world.get_floor_changers()[std::get<2>(
-			    *manager.m_current_selection)];
-			if (manager.is_visable(changer.a.first))
+			else
 			{
-				draw_rectangle(
-				    changer.a.second - glm::dvec2{0.01},
-				    glm::dvec2{0.02},
-				    0,
-				    manager.selected_a_or_b ? glm::dvec4{1, 0, 0, 1}
-				                            : glm::dvec4{0, 1, 0, 1},
-				    true);
-			}
-			if (manager.is_visable(changer.b.first))
-			{
-				draw_rectangle(
-				    changer.b.second - glm::dvec2{0.01},
-				    glm::dvec2{0.02},
-				    0,
-				    !manager.selected_a_or_b ? glm::dvec4{1, 0, 0, 1}
-				                             : glm::dvec4{0, 1, 0, 1},
-				    true);
+				auto changer_index = std::get<2>(selected);
+				auto &changer
+				    = manager.m_world.get_floor_changers()[changer_index.first];
+				if (manager.is_visable(changer.a.first))
+				{
+					draw_rectangle(
+					    changer.a.second - glm::dvec2{0.01},
+					    glm::dvec2{0.02},
+					    0,
+					    changer_index.second ? glm::dvec4{1, 0, 0, 1}
+					                         : glm::dvec4{0, 1, 0, 1},
+					    true);
+				}
+				if (manager.is_visable(changer.b.first))
+				{
+					draw_rectangle(
+					    changer.b.second - glm::dvec2{0.01},
+					    glm::dvec2{0.02},
+					    0,
+					    !changer_index.second ? glm::dvec4{1, 0, 0, 1}
+					                          : glm::dvec4{0, 1, 0, 1},
+					    true);
+				}
 			}
 		}
 	}
@@ -303,6 +334,17 @@ void Renderer::Draw(const SimManager &manager, glm::dvec2 mouse)
 		max.y = glm::max(manager.last_drag.y, mouse.y);
 		draw_rectangle(min, max - min, 0, {0.5, 0.5, 0.5, 0.5});
 	}
+	else if (manager.DragState == SimManager::Select)
+	{
+		glm::dvec2 min, max;
+		min.x = glm::min(manager.last_drag.x, mouse.x);
+		min.y = glm::min(manager.last_drag.y, mouse.y);
+		max.x = glm::max(manager.last_drag.x, mouse.x);
+		max.y = glm::max(manager.last_drag.y, mouse.y);
+		glLineWidth(3);
+		draw_rectangle(min, max - min, 0, {0.25, 0.25, 0.25, 0.25}, true);
+		glLineWidth(1);
+	}
 	else
 	{
 		switch (manager.CreateNext)
@@ -313,7 +355,11 @@ void Renderer::Draw(const SimManager &manager, glm::dvec2 mouse)
 			draw_sphere(mouse, 0.01, {0.0, 1.0, 0.0, 0.5});
 			break;
 		case SimManager::Create::Obstacle:
-			draw_rectangle(mouse - glm::dvec2{0.02}, {0.04, 0.04}, 0, {0.5, 0.5, 0.5, 0.5});
+			draw_rectangle(
+			    mouse - glm::dvec2{0.02},
+			    {0.04, 0.04},
+			    0,
+			    {0.5, 0.5, 0.5, 0.5});
 			break;
 		case SimManager::Create::Changer:
 			glLineWidth(10);

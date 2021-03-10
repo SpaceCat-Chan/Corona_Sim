@@ -91,7 +91,7 @@ int main()
 						    > 20.0)
 						{
 							dragging = true;
-							manager.StartDrag(mouse_click_position);
+							manager.StartDrag(mouse_click_position, io.KeyCtrl);
 						}
 					}
 					else
@@ -116,6 +116,12 @@ int main()
 						    renderer.ScreenToWorld(io.MousePos, manager), io.KeyCtrl);
 					}
 					mouse_down = false;
+				}
+				break;
+			case SDL_KEYUP:
+				if(!io.WantCaptureKeyboard)
+				{
+					manager.KeyClick(event.key.keysym.scancode, io.KeyCtrl);
 				}
 				break;
 			}

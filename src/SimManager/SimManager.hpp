@@ -6,6 +6,8 @@
 
 #include <glm/ext.hpp>
 
+#include "SDL.h"
+
 #include "person.hpp"
 #include "world.hpp"
 
@@ -20,11 +22,13 @@ class SimManager
 	void MoveStep(double dt);
 	void InfectStep(double dt);
 
-	void StartDrag(glm::dvec2);
+	void StartDrag(glm::dvec2, bool);
 	void UpdateDrag(glm::dvec2);
 	void StopDrag(glm::dvec2);
 	void Click(glm::dvec2, bool);
 	void Scroll(double, glm::dvec2);
+
+	void KeyClick(SDL_Scancode key, bool ctrl);
 
 	void LoadFromFile(std::string filename);
 	void SaveToFile(std::string filename);
@@ -52,9 +56,11 @@ class SimManager
 
 	double mousewheel_sensitivity = 0.1;
 
-	std::optional<std::variant<size_t, std::pair<int, size_t>, size_t>>
-	    m_current_selection;
-	bool selected_a_or_b = false;
+	std::optional<std::vector<
+	    std::variant<size_t, std::pair<int, size_t>, std::pair<size_t, bool>>>>
+	    m_selection_box;
+
+	std::optional<std::vector<std::variant<Person, Obstacle, FloorChanger>>> m_paste_buffer;
 
 	std::optional<glm::dvec2> marked_location;
 
@@ -62,24 +68,16 @@ class SimManager
 	{
 		None,
 		Screen,
-		DragPerson,
-		MovingObstacle,
+		DragSelection,
 		RotatingObstacle,
 		ScaleObstacle,
 		CreateObstacle,
-		DragFloorChanger
+		Select
 	} DragState;
-	enum
-	{
-		TopLeft,
-		Top,
-		TopRight,
-		Right,
-		BottomRight,
-		Bottom,
-		BottomLeft,
-		Left
-	} ScaleCorner;
+	uint32_t ScaleCorner_Top : 1 = 0;
+	uint32_t ScaleCorner_Right : 1 = 0;
+	uint32_t ScaleCorner_Bottom : 1 = 0;
+	uint32_t ScaleCorner_Left : 1 = 0;
 
 	enum class Create
 	{
