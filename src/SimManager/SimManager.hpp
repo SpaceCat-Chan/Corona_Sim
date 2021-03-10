@@ -60,7 +60,7 @@ class SimManager
 	    std::variant<size_t, std::pair<int, size_t>, std::pair<size_t, bool>>>>
 	    m_selection_box;
 
-	std::optional<std::vector<std::variant<Person, Obstacle, FloorChanger>>> m_paste_buffer;
+	std::optional<std::vector<std::variant<Person, Obstacle>>> m_paste_buffer;
 
 	std::optional<glm::dvec2> marked_location;
 
@@ -84,7 +84,8 @@ class SimManager
 		None,
 		Person,
 		Obstacle,
-		Changer
+		Changer,
+		Paste
 	} CreateNext;
 
 	glm::dvec2 create_obstacle_start;

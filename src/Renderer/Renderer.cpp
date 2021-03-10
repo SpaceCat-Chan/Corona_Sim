@@ -366,6 +366,47 @@ void Renderer::Draw(const SimManager &manager, glm::dvec2 mouse)
 			draw_sphere(mouse, 0.005, {0.2, 0, 0.7, 0.5});
 			draw_sphere(mouse, 0.005, {0.1, 0, 0.6, 0.5}, true);
 			glLineWidth(1);
+			break;
+		case SimManager::Create::Paste:
+			for (auto &thing : *manager.m_paste_buffer)
+			{
+				if (thing.index() == 0)
+				{
+					auto &person = std::get<0>(thing);
+					switch (person.state)
+					{
+					case Person::susceptible:
+						draw_sphere(
+						    person.position + mouse,
+						    0.01,
+						    glm::dvec4{0.0, 1.0, 0.0, 0.5});
+						break;
+
+					case Person::infected:
+						draw_sphere(
+						    person.position + mouse,
+						    0.01,
+						    glm::dvec4{1.0, 0.0, 0.0, 0.5});
+						break;
+					case Person::recovered:
+						draw_sphere(
+						    person.position + mouse,
+						    0.01,
+						    glm::dvec4{0.7, 0.7, 0.7, 0.5});
+						break;
+					}
+				}
+				else
+				{
+					auto &obstacle = std::get<1>(thing);
+					draw_rectangle(
+					    obstacle.position + mouse,
+					    obstacle.size,
+					    obstacle.rotation,
+					    {0.5, 0.5, 0.5, 0.5});
+				}
+			}
+			break;
 		}
 	}
 

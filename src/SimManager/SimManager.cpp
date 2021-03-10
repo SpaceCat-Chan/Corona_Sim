@@ -618,6 +618,27 @@ void SimManager::Click(glm::dvec2 click, bool ctrl)
 		    {{std::get<0>(viewing_floor_or_group), click},
 		     {std::get<0>(viewing_floor_or_group), click}});
 		return;
+	case Create::Paste: {
+		for (auto thing : *m_paste_buffer)
+		{
+			if (viewing_floor_or_group.index() == 0)
+			{
+				auto floor = std::get<0>(viewing_floor_or_group);
+				if (thing.index() == 0)
+				{
+					std::get<0>(thing).position += click;
+					std::get<0>(thing).floor = floor;
+					m_simulation_start_people.emplace_back(std::get<0>(thing));
+				}
+				else
+				{
+					std::get<1>(thing).position += click;
+					m_world.add_obstacle(floor, std::get<1>(thing));
+				}
+			}
+		}
+		return;
+	}
 	}
 
 	auto &people = SimRunning ? m_current_people : m_simulation_start_people;
@@ -1059,7 +1080,7 @@ void SimManager::SaveToFile(std::string filename)
 	ar << m_simulation_start_people;
 }
 
-void SimManager::KeyClick(SDL_Scancode key, bool)
+void SimManager::KeyClick(SDL_Scancode key, bool ctrl)
 {
 	switch (key)
 	{
@@ -1077,7 +1098,9 @@ void SimManager::KeyClick(SDL_Scancode key, bool)
 		{
 			if (m_selection_box)
 			{
-				for (auto iter = m_selection_box->rbegin(); iter != m_selection_box->rend(); iter++)
+				for (auto iter = m_selection_box->rbegin();
+				     iter != m_selection_box->rend();
+				     iter++)
 				{
 					auto &thing = *iter;
 					if (thing.index() == 0)
@@ -1101,7 +1124,78 @@ void SimManager::KeyClick(SDL_Scancode key, bool)
 			}
 		}
 		break;
-	
+
+	case SDL_SCANCODE_C:
+		if (ctrl && !SimRunning && m_selection_box)
+		{
+			CreateNext = Create::None;
+			auto floor = std::get<0>(viewing_floor_or_group);
+			if (!m_world.get_layout().contains(floor))
+			{
+				break;
+			}
+			m_paste_buffer.emplace();
+			glm::dvec2 min_pos{std::numeric_limits<double>::max()}, max_pos;
+			for (auto &thing : *m_selection_box)
+			{
+				if (thing.index() == 0)
+				{
+					auto &person
+					    = m_simulation_start_people.at(std::get<0>(thing));
+					m_paste_buffer->emplace_back(person);
+					min_pos.x = glm::min(min_pos.x, person.position.x);
+					min_pos.y = glm::min(min_pos.y, person.position.y);
+					max_pos.x = glm::max(max_pos.x, person.position.x);
+					max_pos.y = glm::max(max_pos.y, person.position.y);
+				}
+				else if (thing.index() == 1)
+				{
+					auto obstacle_index = std::get<1>(thing);
+					auto &obstacle = m_world.get_obstacle(
+					    obstacle_index.first,
+					    obstacle_index.second);
+					m_paste_buffer->emplace_back(obstacle);
+					min_pos.x = glm::min(min_pos.x, obstacle.position.x);
+					min_pos.y = glm::min(min_pos.y, obstacle.position.y);
+					max_pos.x = glm::max(
+					    max_pos.x,
+					    obstacle.position.x + obstacle.size.x);
+					max_pos.y = glm::max(
+					    max_pos.y,
+					    obstacle.position.y + obstacle.size.y);
+				}
+			}
+			if (m_paste_buffer->size() == 0)
+			{
+				m_paste_buffer = std::nullopt;
+				break;
+			}
+			auto center = glm::mix(min_pos, max_pos, 0.5);
+			for (auto &thing : *m_paste_buffer)
+			{
+				if (thing.index() == 0)
+				{
+					std::get<0>(thing).position -= center;
+				}
+				else
+				{
+					std::get<1>(thing).position -= center;
+				}
+			}
+		}
+		break;
+
+	case SDL_SCANCODE_V:
+		if (ctrl && !SimRunning && m_paste_buffer)
+		{
+			auto floor = std::get<0>(viewing_floor_or_group);
+			if (!m_world.get_layout().contains(floor))
+			{
+				break;
+			}
+			CreateNext = Create::Paste;
+		}
+		break;
 
 	default:
 		break;
