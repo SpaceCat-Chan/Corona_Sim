@@ -34,9 +34,9 @@ class SimManager
 	bool is_visable(int floor) const;
 
 	private:
-	void PersonUI(Person &);
+	bool PersonUI(Person &);
 	void ObstacleUI(int, size_t, bool &);
-	void ChangerUI(size_t);
+	void ChangerUI(size_t, bool &);
 	World m_world;
 	std::vector<Person> m_current_people;
 	std::vector<Person> m_simulation_start_people;
@@ -83,7 +83,10 @@ class SimManager
 
 	enum class Create
 	{
-		None, Person, Obstacle, Changer
+		None,
+		Person,
+		Obstacle,
+		Changer
 	} CreateNext;
 
 	glm::dvec2 create_obstacle_start;

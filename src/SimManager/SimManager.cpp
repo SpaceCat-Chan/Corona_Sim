@@ -1,13 +1,13 @@
 #include "SimManager.hpp"
 
+#include <fstream>
 #include <glm/gtx/string_cast.hpp>
 #include <iostream>
 #include <sstream>
-#include <fstream>
 
+#include "glm_serialize.hpp"
 #include "imgui/imgui.h"
 #include "imgui/misc/cpp/imgui_stdlib.h"
-#include "glm_serialize.hpp"
 
 SimManager::SimManager(std::function<double(std::optional<double>)> timescale)
 {
@@ -209,7 +209,6 @@ void SimManager::DrawUI(glm::dvec2 mouse_location)
 		SimRunning = false;
 	}
 
-
 	if (viewing_floor_or_group.index() == 0)
 	{
 		if (ImGui::Button("Create Person"))
@@ -287,12 +286,12 @@ void SimManager::DrawUI(glm::dvec2 mouse_location)
 	}
 	static std::string filename;
 	ImGui::InputText("Filename", &filename);
-	if(ImGui::Button("Save"))
+	if (ImGui::Button("Save"))
 	{
 		SaveToFile(filename);
 	}
 	ImGui::SameLine();
-	if(ImGui::Button("Load"))
+	if (ImGui::Button("Load"))
 	{
 		LoadFromFile(filename);
 	}
@@ -312,7 +311,12 @@ void SimManager::DrawUI(glm::dvec2 mouse_location)
 			auto &person_index = std::get<0>(*m_current_selection);
 			auto &person = SimRunning ? m_current_people[person_index]
 			                          : m_simulation_start_people[person_index];
-			PersonUI(person);
+			auto to_delete = PersonUI(person);
+			if(to_delete)
+			{
+				open = false;
+				m_simulation_start_people.erase(m_simulation_start_people.begin() + person_index);
+			}
 		}
 		break;
 		case 1: {
@@ -321,7 +325,7 @@ void SimManager::DrawUI(glm::dvec2 mouse_location)
 		}
 		break;
 		case 2:
-			ChangerUI(std::get<2>(*m_current_selection));
+			ChangerUI(std::get<2>(*m_current_selection), open);
 			break;
 		}
 		ImGui::End();
@@ -332,7 +336,7 @@ void SimManager::DrawUI(glm::dvec2 mouse_location)
 	}
 }
 
-void SimManager::PersonUI(Person &person)
+bool SimManager::PersonUI(Person &person)
 {
 	if (SimRunning)
 	{
@@ -475,7 +479,12 @@ void SimManager::PersonUI(Person &person)
 		{
 			person.floor = current_floor;
 		}
+		if (ImGui::Button("delete"))
+		{
+			return true;
+		}
 	}
+	return false;
 }
 
 void SimManager::ObstacleUI(int floor, size_t index, bool &open)
@@ -498,11 +507,24 @@ void SimManager::ObstacleUI(int floor, size_t index, bool &open)
 	}
 }
 
-void SimManager::ChangerUI(size_t changer_index)
+void SimManager::ChangerUI(size_t changer_index, bool &open)
 {
 	auto &changer = m_world.get_floor_changer(changer_index);
-	ImGui::InputInt("Floor A", &changer.a.first);
-	ImGui::InputInt("Floor B", &changer.b.first);
+	if (!SimRunning)
+	{
+		ImGui::InputInt("Floor A", &changer.a.first);
+		ImGui::InputInt("Floor B", &changer.b.first);
+		if (ImGui::Button("delete"))
+		{
+			m_world.remove_floor_changer(changer_index);
+			open = false;
+		}
+	}
+	else
+	{
+		ImGui::Text("Floor A: %i", changer.a.first);
+		ImGui::Text("Floor B: %i", changer.b.first);
+	}
 }
 
 void SimManager::Scroll(double amount, glm::dvec2 mouse_pos)
@@ -658,7 +680,7 @@ void SimManager::StartDrag(glm::dvec2 where)
 	std::cout << glm::to_string(where) << '\n';
 	last_drag = where;
 
-	if(CreateNext == Create::Obstacle && viewing_floor_or_group.index() == 0)
+	if (CreateNext == Create::Obstacle && viewing_floor_or_group.index() == 0)
 	{
 		DragState = CreateObstacle;
 		return;
@@ -831,14 +853,16 @@ void SimManager::StopDrag(glm::dvec2 where)
 		return;
 	}
 	UpdateDrag(where);
-	if(DragState == CreateObstacle)
+	if (DragState == CreateObstacle)
 	{
 		glm::dvec2 min, max;
 		min.x = glm::min(last_drag.x, where.x);
 		min.y = glm::min(last_drag.y, where.y);
 		max.x = glm::max(last_drag.x, where.x);
 		max.y = glm::max(last_drag.y, where.y);
-		m_world.add_obstacle(std::get<0>(viewing_floor_or_group), {min, max - min, 0});
+		m_world.add_obstacle(
+		    std::get<0>(viewing_floor_or_group),
+		    {min, max - min, 0});
 	}
 	DragState = None;
 }
