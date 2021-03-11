@@ -14,7 +14,7 @@
 
 int main()
 {
-	double timescale = 1;
+	double timescale = 3;
 	SimManager manager{[&timescale](std::optional<double> desired) {
 		if (desired)
 		{
@@ -38,7 +38,7 @@ int main()
 
 	bool quit = false;
 	double total_time = 0;
-	constexpr double time_per_step = 1.0 / 60.0;
+	constexpr double time_per_step = 1.0 / 10.0;
 	bool dragging = false;
 	bool mouse_down = false;
 	glm::dvec2 mouse_click_position;
@@ -97,7 +97,10 @@ int main()
 					else
 					{
 						manager.UpdateDrag(
-						    renderer.ScreenToWorld(io.MousePos, manager));
+						    renderer.ScreenToWorld(io.MousePos, manager),
+						    renderer.ScreenToWorld_scale(
+						        {event.motion.xrel, event.motion.yrel},
+						        manager));
 					}
 				}
 				break;
@@ -113,13 +116,14 @@ int main()
 					else
 					{
 						manager.Click(
-						    renderer.ScreenToWorld(io.MousePos, manager), io.KeyCtrl);
+						    renderer.ScreenToWorld(io.MousePos, manager),
+						    io.KeyCtrl);
 					}
 					mouse_down = false;
 				}
 				break;
 			case SDL_KEYUP:
-				if(!io.WantCaptureKeyboard)
+				if (!io.WantCaptureKeyboard)
 				{
 					manager.KeyClick(event.key.keysym.scancode, io.KeyCtrl);
 				}

@@ -31,11 +31,11 @@ bool World::test_line_of_sight(
     glm::dvec2 from,
     glm::dvec2 to,
     bool movement,
-    bool infection) const
+    bool infection, double expand) const
 {
 	if (m_map.contains(floor))
 	{
-		return m_map.at(floor).test_line_of_sight(from, to, movement, infection);
+		return m_map.at(floor).test_line_of_sight(from, to, movement, infection, expand);
 	}
 	return true;
 }
@@ -44,14 +44,14 @@ bool Floor::test_line_of_sight(
     glm::dvec2 from,
     glm::dvec2 to,
     bool movement,
-    bool infection) const
+    bool infection, double expand) const
 {
 	for (auto &obstacle : obstacles)
 	{
 		if ((movement && obstacle.blocks_movement)
 		    || (infection && obstacle.blocks_infection))
 		{
-			if (obstacle.intersects(from, to))
+			if (obstacle.intersects(from, to, expand))
 			{
 				return false;
 			}
@@ -184,13 +184,13 @@ bool Obstacle::intersects(const Obstacle &other) const
 	       || other.intersects(my_points[3], my_points[0]);
 }
 
-bool Obstacle::intersects(glm::dvec2 from, glm::dvec2 to) const
+bool Obstacle::intersects(glm::dvec2 from, glm::dvec2 to, double expand) const
 {
 	if (intersects(from) || intersects(to))
 	{
 		return true;
 	}
-	auto vertecies = get_vertecies(0);
+	auto vertecies = get_vertecies(expand);
 	double dont_care, dont_care_2;
 	return LineLineIntersect(
 	           from.x,

@@ -6,6 +6,10 @@
 
 #include <glm/ext.hpp>
 
+#include <boost/serialization/unordered_map.hpp>
+#include <boost/serialization/vector.hpp>
+#include "glm_serialize.hpp"
+
 #include "SDL.h"
 
 #include "person.hpp"
@@ -23,7 +27,7 @@ class SimManager
 	void InfectStep(double dt);
 
 	void StartDrag(glm::dvec2, bool);
-	void UpdateDrag(glm::dvec2);
+	void UpdateDrag(glm::dvec2, glm::dvec2);
 	void StopDrag(glm::dvec2);
 	void Click(glm::dvec2, bool);
 	void Scroll(double, glm::dvec2);
@@ -49,6 +53,8 @@ class SimManager
 	double sim_time = 0;
 	std::mt19937_64 rng{1337};
 	glm::dvec4 viewport{0, 0, 1, 1};
+
+	std::uniform_real_distribution<double> direction_seed_dist{4.0, 1000.0};
 
 	std::variant<int, std::string> viewing_floor_or_group{
 	    std::in_place_index<0>,
@@ -92,11 +98,11 @@ class SimManager
 	glm::dvec2 last_drag;
 
 	//chance of infection: 1/(1 + distance * inf_dist_mult) * infection_chance * dt
-	double minimum_infection_range = 0.05;
-	double infection_chance = 0.5;
-	double infection_distance_multiplier = 0.05;
-	double min_infection_duration{4.0};
-	double max_infection_duration{8.0};
+	double maximum_infection_range = 0.05;
+	double infection_chance = 0.1;
+	double infection_distance_multiplier = 0.1;
+	double min_infection_duration{1e100};
+	double max_infection_duration{1e101};
 
 	friend class Renderer;
 };

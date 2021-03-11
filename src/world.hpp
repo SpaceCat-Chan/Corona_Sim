@@ -7,8 +7,6 @@
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
 #include <boost/serialization/access.hpp>
-#include <boost/serialization/unordered_map.hpp>
-#include <boost/serialization/vector.hpp>
 
 #include <glm/ext.hpp>
 #include <glm/gtx/matrix_transform_2d.hpp>
@@ -24,7 +22,7 @@ struct Obstacle
 	bool blocks_movement = true;
 	std::vector<glm::dvec2>
 	get_vertecies(double expand_by, bool include_rotations = true) const;
-	bool intersects(glm::dvec2 from, glm::dvec2 to) const;
+	bool intersects(glm::dvec2 from, glm::dvec2 to, double expand = 0) const;
 	bool intersects(glm::dvec2 point) const;
 	bool intersects(const Obstacle &other) const;
 
@@ -39,7 +37,7 @@ struct Obstacle
 	private:
 	friend class boost::serialization::access;
 	template <typename Archive>
-	void serialize(Archive & ar, unsigned int)
+	void serialize(Archive &ar, unsigned int)
 	{
 		ar &position;
 		ar &size;
@@ -52,6 +50,14 @@ struct Obstacle
 struct FloorChanger
 {
 	std::pair<int, glm::dvec2> a, b;
+
+	private:
+	friend class boost::serialization::access;
+	template <typename Archive>
+	void serialize(Archive &ar, unsigned int)
+	{
+		ar &a &b;
+	}
 };
 
 struct Floor
@@ -63,7 +69,8 @@ struct Floor
 	    glm::dvec2 pos_a,
 	    glm::dvec2 pos_b,
 	    bool movement,
-	    bool infection) const;
+	    bool infection,
+	    double expand = 0) const;
 	const std::vector<std::pair<glm::dvec2, std::vector<size_t>>> &
 	recalc_visibility_graph() const;
 	void recalc() const { needs_recalc = true; }
@@ -75,13 +82,13 @@ struct Floor
 
 	friend class boost::serialization::access;
 	template <typename Archive>
-	void serialize(Archive & ar, unsigned int)
+	void serialize(Archive &ar, unsigned int)
 	{
 		ar &name;
 		ar &group;
 		ar &obstacles;
 		ar &needs_recalc;
-		if(!needs_recalc)
+		if (!needs_recalc)
 		{
 			ar &visibility_graph;
 		}
@@ -100,7 +107,8 @@ class World
 	    glm::dvec2 pos_a,
 	    glm::dvec2 pos_b,
 	    bool movement,
-	    bool infection) const;
+	    bool infection,
+	    double expand = 0) const;
 
 	PathResult
 	calculate_path(int from_floor, glm::dvec2 from, int to_floor, glm::dvec2 to)
@@ -145,6 +153,7 @@ class World
 	void serialize(Archive &ar, unsigned int)
 	{
 		ar &m_map;
+		ar &floor_changers;
 	}
 };
 

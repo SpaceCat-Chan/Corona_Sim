@@ -11,6 +11,7 @@ struct Action
 {
 	double when;
 	std::pair<int, glm::dvec2> where;
+	bool allow_wander = false;
 
 	private:
 	friend class boost::serialization::access;
@@ -19,12 +20,13 @@ struct Action
 	{
 		ar &when;
 		ar &where;
+		ar &allow_wander;
 	}
 };
 
 struct Routine
 {
-	int repeat_interval;
+	double repeat_interval;
 	std::vector<Action> actions;
 
 	private:
@@ -36,6 +38,7 @@ struct Routine
 		ar &actions;
 	}
 };
+
 class Person
 {
 	public:
@@ -61,6 +64,7 @@ class Person
 
 	Routine routine;
 	size_t routine_step = 0;
+	double time_offset = 0;
 
 	double infection_finish_time;
 
@@ -69,6 +73,9 @@ class Person
 	size_t going_to;
 	PathResult going_along;
 	std::optional<double> switching_floor_time;
+
+	double noise_seed = 3;
+	glm::dvec2 current_direction = {0, 1};
 
 	private:
 	friend class boost::serialization::access;
@@ -79,5 +86,6 @@ class Person
 		ar &floor;
 		ar &routine;
 		ar &state;
+		ar &noise_seed;
 	}
 };

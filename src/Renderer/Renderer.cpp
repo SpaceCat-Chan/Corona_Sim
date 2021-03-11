@@ -484,6 +484,10 @@ glm::dvec2 Renderer::ScreenToWorld(glm::dvec2 in, const SimManager &manager)
 {
 	return ViewportToWorld(ScreenToViewport(in), manager);
 }
+glm::dvec2 Renderer::ScreenToWorld_scale(glm::dvec2 in, const SimManager &)
+{
+	return (in / window_size);
+}
 
 glm::dvec2 Renderer::ViewportToScreen(glm::dvec2 in) { return in * window_size; }
 

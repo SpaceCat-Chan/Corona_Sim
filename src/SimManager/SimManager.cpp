@@ -3,11 +3,14 @@
 #include <fstream>
 #include <glm/gtx/string_cast.hpp>
 #include <iostream>
+#include <numbers>
 #include <sstream>
 
-#include "glm_serialize.hpp"
 #include "imgui/imgui.h"
 #include "imgui/misc/cpp/imgui_stdlib.h"
+
+#define STB_PERLIN_IMPLEMENTATION
+#include "stb_perlin.h"
 
 SimManager::SimManager(std::function<double(std::optional<double>)> timescale)
 {
@@ -41,31 +44,79 @@ void SimManager::MoveStep(double dt)
 	{
 		if (person.going_to >= person.going_along.waypoints.size())
 		{
-			//temporary routine, just for testing
 			if (person.routine.actions.size() == 0)
 			{
 				continue;
 			}
-			if (person.routine_step >= person.routine.actions.size())
+			auto current_time = sim_time - person.time_offset;
+			if (current_time > person.routine.repeat_interval)
 			{
+				current_time -= person.routine.repeat_interval;
+				person.time_offset += person.routine.repeat_interval;
 				person.routine_step = 0;
 			}
-			auto current_action = person.routine.actions[person.routine_step];
-			auto current_time = sim_time;
-			int rounded_time = current_time;
-			current_time -= rounded_time;
-			rounded_time %= person.routine.repeat_interval;
-			current_time += rounded_time;
-			if (current_time > current_action.when)
+			if (person.routine_step >= person.routine.actions.size())
 			{
-				person.going_along = m_world.calculate_path(
-				    person.floor,
-				    person.position,
-				    current_action.where.first,
-				    current_action.where.second);
-				person.going_to = 0;
-				person.routine_step++;
+				if (person.routine.actions[person.routine_step - 1].allow_wander)
+				{
+					goto idle;
+				}
 			}
+			else
+			{
+				auto current_action
+				    = person.routine.actions[person.routine_step];
+
+				if (current_time >= current_action.when)
+				{
+					person.going_along = m_world.calculate_path(
+					    person.floor,
+					    person.position,
+					    current_action.where.first,
+					    current_action.where.second);
+					person.going_to = 0;
+					person.routine_step++;
+				}
+				else
+				{
+					if (person.routine.actions[person.routine_step - 1]
+					        .allow_wander)
+					{
+						goto idle;
+					}
+				}
+			}
+			goto after_idle;
+		idle : {
+			double delta_direction = stb_perlin_noise3(
+			    person.noise_seed,
+			    420.66,
+			    std::numbers::pi,
+			    0,
+			    0,
+			    0);
+			delta_direction *= dt * 2;
+			auto rotate = glm::rotate(
+			    glm::dmat4{1},
+			    delta_direction,
+			    glm::dvec3{0, 0, 1});
+			person.current_direction
+			    = rotate * glm::dvec4{person.current_direction, 0, 0};
+			person.current_direction = glm::normalize(person.current_direction);
+			person.noise_seed += 0.1 * dt;
+			if (m_world.test_line_of_sight(
+			        person.floor,
+			        person.position,
+			        person.position + person.current_direction * 0.01 * dt,
+			        true,
+			        false,
+			        0.02))
+			{
+				person.position
+				    = person.position + person.current_direction * 0.01 * dt;
+			}
+		}
+		after_idle:
 			continue;
 		}
 
@@ -134,19 +185,22 @@ void SimManager::InfectStep(double dt)
 			auto &second_person = m_current_people[second_person_iter];
 			if (first_person_iter == second_person_iter
 			    || second_person.state != Person::susceptible
-			    || first_person.floor != second_person.floor
-			    || !m_world.test_line_of_sight(
-			        first_person.floor,
-			        first_person.position,
-			        second_person.position,
-			        false,
-			        true))
+			    || first_person.floor != second_person.floor)
 			{
 				continue;
 			}
 			auto distance
 			    = glm::distance(first_person.position, second_person.position);
-			if (distance > minimum_infection_range)
+			if (distance > maximum_infection_range)
+			{
+				continue;
+			}
+			if (!m_world.test_line_of_sight(
+			        first_person.floor,
+			        first_person.position,
+			        second_person.position,
+			        false,
+			        true))
 			{
 				continue;
 			}
@@ -397,6 +451,10 @@ bool SimManager::PersonUI(Person &person)
 				ImGui::InputFloat2("Where", glm::value_ptr(where));
 				person.routine.actions[i].where.second = where;
 
+				ImGui::Checkbox(
+				    "allow wandering",
+				    &person.routine.actions[i].allow_wander);
+
 				if (ImGui::Button("delete"))
 				{
 					to_delete = i;
@@ -606,6 +664,7 @@ void SimManager::Click(glm::dvec2 click, bool ctrl)
 		    = m_simulation_start_people[m_simulation_start_people.size() - 1];
 		person.position = click;
 		person.floor = std::get<0>(viewing_floor_or_group);
+		person.noise_seed = direction_seed_dist(rng);
 	}
 		return;
 	case Create::Obstacle:
@@ -628,6 +687,7 @@ void SimManager::Click(glm::dvec2 click, bool ctrl)
 				{
 					std::get<0>(thing).position += click;
 					std::get<0>(thing).floor = floor;
+					std::get<0>(thing).noise_seed = direction_seed_dist(rng);
 					m_simulation_start_people.emplace_back(std::get<0>(thing));
 				}
 				else
@@ -853,7 +913,7 @@ void SimManager::StartDrag(glm::dvec2 where, bool ctrl)
 	DragState = Screen;
 }
 
-void SimManager::UpdateDrag(glm::dvec2 where)
+void SimManager::UpdateDrag(glm::dvec2 where, glm::dvec2 delta)
 {
 	if (SimRunning && DragState != Screen)
 	{
@@ -864,8 +924,8 @@ void SimManager::UpdateDrag(glm::dvec2 where)
 	case None:
 		break;
 	case Screen:
-		viewport.x -= last_drag.x - where.x;
-		viewport.y -= last_drag.y - where.y;
+		viewport.x += delta.x;
+		viewport.y += delta.y;
 		break;
 	case DragSelection: {
 		for (auto &thing : *m_selection_box)
@@ -980,7 +1040,7 @@ void SimManager::StopDrag(glm::dvec2 where)
 	{
 		return;
 	}
-	UpdateDrag(where);
+	UpdateDrag(where, {0, 0});
 	if (DragState == CreateObstacle)
 	{
 		glm::dvec2 min, max;

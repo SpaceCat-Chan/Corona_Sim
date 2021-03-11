@@ -34,6 +34,7 @@ class Renderer
 	void Cleanup();
 
 	glm::dvec2 ScreenToWorld(glm::dvec2, const SimManager&);
+	glm::dvec2 ScreenToWorld_scale(glm::dvec2, const SimManager&);
 	glm::dvec2 WorldToScreen(glm::dvec2, const SimManager&);
 	glm::dvec2 ScreenToViewport(glm::dvec2);
 	glm::dvec2 ViewportToScreen(glm::dvec2);
